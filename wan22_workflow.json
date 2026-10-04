@@ -192,7 +192,11 @@
       "height": [
         "365",
         1
-      ]
+      ],
+      "retarget_padding": 16,
+      "body_stick_width": -1,
+      "hand_stick_width": -1,
+      "draw_head": true
     },
     "class_type": "DrawViTPose",
     "_meta": {
