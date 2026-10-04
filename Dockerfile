@@ -12,15 +12,118 @@ RUN apt-get update \
 # Custom Nodes
 # ============================================================
 
+# ------------------------------------------------------------
 # WanAnimatePreprocess
-# Stable baseline + upstream PR #38 ONNX detection fix
-RUN set -eux; \
-    git clone https://github.com/kijai/ComfyUI-WanAnimatePreprocess.git \
-      /comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess; \
-    cd /comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess; \
-    git checkout e63d6e71ae4c271f3f81211a7ca7f87607b7e50d; \
-    git fetch origin pull/38/head:pr38; \
-    git cherry-pick 2377849739c190f7b854589c5b615d2fc79d2812
+# Keep the already-tested stable commit.
+# Then apply ONLY the ONNX detection compatibility fix.
+# No cherry-pick. No pyproject.toml changes.
+# ------------------------------------------------------------
+
+RUN git clone https://github.com/kijai/ComfyUI-WanAnimatePreprocess.git \
+      /comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess \
+    && cd /comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess \
+    && git checkout e63d6e71ae4c271f3f81211a7ca7f87607b7e50d
+
+# ============================================================
+# ONNX Detection Compatibility Fix
+#
+# Root cause:
+# Current ComfyUI already has a "detection" model category.
+# .onnx must be added to its supported extensions.
+# Existing filename caches must then be cleared.
+#
+# We insert the fix immediately after "import folder_paths".
+# ============================================================
+
+RUN /opt/venv/bin/python - <<'PY'
+from pathlib import Path
+
+p = Path("/comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess/nodes.py")
+
+text = p.read_text(encoding="utf-8")
+
+marker = "import folder_paths"
+
+if marker not in text:
+    raise RuntimeError(
+        "WAN22 PATCH ERROR: 'import folder_paths' was not found in nodes.py"
+    )
+
+patch = r'''
+# ============================================================
+# WAN22 / Current ComfyUI ONNX detection compatibility fix
+# ============================================================
+
+# Current ComfyUI may already register the "detection" category.
+# Make sure ONNX files are included in the allowed extensions.
+
+if "detection" in folder_paths.folder_names_and_paths:
+    _det_paths, _det_exts = folder_paths.folder_names_and_paths["detection"]
+
+    _det_exts = set(_det_exts)
+    _det_exts.add(".onnx")
+
+    folder_paths.folder_names_and_paths["detection"] = (
+        _det_paths,
+        _det_exts,
+    )
+else:
+    folder_paths.folder_names_and_paths["detection"] = (
+        [folder_paths.get_folder_paths("detection")[0]],
+        {".onnx"},
+    )
+
+# Clear old detection filename cache after changing extensions.
+
+if hasattr(folder_paths, "filename_list_cache"):
+    folder_paths.filename_list_cache.pop("detection", None)
+
+# Current ComfyUI also has cache_helper.
+# Clear it so get_filename_list("detection") is rebuilt.
+
+if hasattr(folder_paths, "cache_helper"):
+    try:
+        folder_paths.cache_helper.clear()
+    except Exception:
+        pass
+
+# ============================================================
+# End WAN22 compatibility fix
+# ============================================================
+'''
+
+if "WAN22 / Current ComfyUI ONNX detection compatibility fix" in text:
+    raise RuntimeError(
+        "WAN22 PATCH ERROR: compatibility patch already exists"
+    )
+
+text = text.replace(marker, marker + "\n" + patch, 1)
+
+p.write_text(text, encoding="utf-8")
+
+print("============================================================")
+print("[WAN22] ONNX detection compatibility patch applied")
+print("[WAN22] Patched file:", p)
+print("============================================================")
+PY
+
+# Verify the patch during Docker build.
+# If it is not present, BUILD MUST fail here instead of wasting
+# time starting a worker with an unpatched node.
+
+RUN grep -n \
+    "WAN22 / Current ComfyUI ONNX detection compatibility fix" \
+    /comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess/nodes.py \
+    && grep -n \
+    'filename_list_cache.pop("detection", None)' \
+    /comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess/nodes.py \
+    && grep -n \
+    'cache_helper.clear()' \
+    /comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess/nodes.py
+
+# ------------------------------------------------------------
+# Other custom nodes - unchanged
+# ------------------------------------------------------------
 
 RUN git clone https://github.com/kijai/ComfyUI-segment-anything-2.git \
       /comfyui/custom_nodes/ComfyUI-segment-anything-2 \
@@ -180,11 +283,6 @@ link_model \
 
 # ============================================================
 # SAM2
-# Cached filename:
-# sam2.1_hiera_base_plus-fp16.safetensors
-#
-# Workflow-compatible alias:
-# sam2.1_hiera_base_plus.safetensors
 # ============================================================
 
 link_model \
