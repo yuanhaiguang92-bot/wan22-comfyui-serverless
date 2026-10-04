@@ -12,10 +12,15 @@ RUN apt-get update \
 # Custom Nodes
 # ============================================================
 
-RUN git clone https://github.com/kijai/ComfyUI-WanAnimatePreprocess.git \
-      /comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess \
-    && cd /comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess \
-    && git checkout e63d6e71ae4c271f3f81211a7ca7f87607b7e50d
+# WanAnimatePreprocess
+# Stable baseline + upstream PR #38 ONNX detection fix
+RUN set -eux; \
+    git clone https://github.com/kijai/ComfyUI-WanAnimatePreprocess.git \
+      /comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess; \
+    cd /comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess; \
+    git checkout e63d6e71ae4c271f3f81211a7ca7f87607b7e50d; \
+    git fetch origin pull/38/head:pr38; \
+    git cherry-pick 2377849739c190f7b854589c5b615d2fc79d2812
 
 RUN git clone https://github.com/kijai/ComfyUI-segment-anything-2.git \
       /comfyui/custom_nodes/ComfyUI-segment-anything-2 \
@@ -134,54 +139,58 @@ link_model () {
 # ============================================================
 
 link_model \
-"Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors" \
-"/comfyui/models/diffusion_models"
+    "Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors" \
+    "/comfyui/models/diffusion_models"
 
 link_model \
-"umt5_xxl_fp8_e4m3fn_scaled.safetensors" \
-"/comfyui/models/text_encoders"
+    "umt5_xxl_fp8_e4m3fn_scaled.safetensors" \
+    "/comfyui/models/text_encoders"
 
 link_model \
-"wan_2.1_vae.safetensors" \
-"/comfyui/models/vae"
+    "wan_2.1_vae.safetensors" \
+    "/comfyui/models/vae"
 
 link_model \
-"clip_vision_h.safetensors" \
-"/comfyui/models/clip_vision"
+    "clip_vision_h.safetensors" \
+    "/comfyui/models/clip_vision"
 
 # ============================================================
 # LoRA
 # ============================================================
 
 link_model \
-"lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors" \
-"/comfyui/models/loras"
+    "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors" \
+    "/comfyui/models/loras"
 
 link_model \
-"WanAnimate_relight_lora_fp16.safetensors" \
-"/comfyui/models/loras"
+    "WanAnimate_relight_lora_fp16.safetensors" \
+    "/comfyui/models/loras"
 
 # ============================================================
 # ONNX Detection
-# These MUST exist BEFORE ComfyUI imports WanAnimatePreprocess.
 # ============================================================
 
 link_model \
-"vitpose-l-wholebody.onnx" \
-"/comfyui/models/detection"
+    "vitpose-l-wholebody.onnx" \
+    "/comfyui/models/detection"
 
 link_model \
-"yolov10m.onnx" \
-"/comfyui/models/detection"
+    "yolov10m.onnx" \
+    "/comfyui/models/detection"
 
 # ============================================================
 # SAM2
+# Cached filename:
+# sam2.1_hiera_base_plus-fp16.safetensors
+#
+# Workflow-compatible alias:
+# sam2.1_hiera_base_plus.safetensors
 # ============================================================
 
 link_model \
-"sam2.1_hiera_base_plus-fp16.safetensors" \
-"/comfyui/models/sam2" \
-"sam2.1_hiera_base_plus.safetensors"
+    "sam2.1_hiera_base_plus-fp16.safetensors" \
+    "/comfyui/models/sam2" \
+    "sam2.1_hiera_base_plus.safetensors"
 
 # ============================================================
 # Final Verification
@@ -223,13 +232,6 @@ RUN chmod +x /usr/local/bin/wan22-map-models.sh
 
 # ============================================================
 # Startup
-#
-# IMPORTANT:
-# Map all Cached Models FIRST.
-# Only AFTER mapping finishes do we launch the official
-# RunPod /start.sh, which starts ComfyUI and imports custom nodes.
-# This ensures detection/*.onnx exists before
-# WanAnimatePreprocess calls get_filename_list("detection").
 # ============================================================
 
 RUN cat > /usr/local/bin/wan22-start.sh <<'EOF'
@@ -254,6 +256,10 @@ exec /start.sh
 EOF
 
 RUN chmod +x /usr/local/bin/wan22-start.sh
+
+# ============================================================
+# Start Worker
+# ============================================================
 
 WORKDIR /comfyui
 
