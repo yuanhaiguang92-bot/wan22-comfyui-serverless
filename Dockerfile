@@ -39,7 +39,7 @@ RUN git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git \
       /comfyui/custom_nodes/ComfyUI-VideoHelperSuite
 
 # ============================================================
-# Install custom node dependencies
+# Install dependencies
 # ============================================================
 RUN set -eux; \
     for req in /comfyui/custom_nodes/*/requirements.txt; do \
@@ -50,8 +50,7 @@ RUN set -eux; \
     /opt/venv/bin/python -m pip install --no-cache-dir "click<=8.1.8"
 
 # ============================================================
-# Local model directories
-# No large models are baked into this Docker image.
+# ComfyUI model directories
 # ============================================================
 RUN mkdir -p \
     /comfyui/models/diffusion_models \
@@ -63,69 +62,154 @@ RUN mkdir -p \
     /comfyui/models/sam2
 
 # ============================================================
-# Extend RunPod model search paths for WAN2.2
+# Runtime Cached Model auto-discovery
+#
+# Important:
+# - No model is copied.
+# - Only symlinks are created.
+# - Search is restricted to likely RunPod cache/mount roots.
 # ============================================================
-RUN printf '%s\n' \
-'runpod_worker_comfy:' \
-'  base_path: /runpod-volume' \
-'  checkpoints: models/checkpoints/' \
-'  clip: models/clip/' \
-'  clip_vision: models/clip_vision/' \
-'  configs: models/configs/' \
-'  controlnet: models/controlnet/' \
-'  embeddings: models/embeddings/' \
-'  loras: models/loras/' \
-'  upscale_models: models/upscale_models/' \
-'  vae: models/vae/' \
-'  unet: models/unet/' \
-'  diffusion_models: models/diffusion_models/' \
-'  text_encoders: models/text_encoders/' \
-'  detection: models/detection/' \
-'  sam2: models/sam2/' \
-> /comfyui/extra_model_paths.yaml
+RUN cat > /usr/local/bin/wan22-map-models.sh <<'EOF'
+#!/bin/bash
+set -u
+
+echo "============================================================"
+echo "[WAN22] Cached Model auto-discovery starting"
+echo "============================================================"
+
+SEARCH_ROOTS=""
+
+for root in \
+    /runpod-volume \
+    /workspace \
+    /root/.cache/huggingface \
+    /huggingface-cache
+do
+    if [ -d "$root" ]; then
+        SEARCH_ROOTS="$SEARCH_ROOTS $root"
+        echo "[WAN22] Search root available: $root"
+    fi
+done
+
+if [ -z "$SEARCH_ROOTS" ]; then
+    echo "[WAN22] ERROR: No expected model/cache roots are available."
+    exit 0
+fi
+
+link_model () {
+    filename="$1"
+    target_dir="$2"
+    target_name="${3:-$filename}"
+
+    echo "[WAN22] Looking for: $filename"
+
+    found=""
+
+    for root in $SEARCH_ROOTS; do
+        found="$(find "$root" -type f -name "$filename" -print -quit 2>/dev/null || true)"
+
+        if [ -n "$found" ]; then
+            break
+        fi
+    done
+
+    if [ -n "$found" ]; then
+        mkdir -p "$target_dir"
+        ln -sf "$found" "$target_dir/$target_name"
+
+        echo "[WAN22] FOUND: $found"
+        echo "[WAN22] LINK : $target_dir/$target_name"
+    else
+        echo "[WAN22] NOT FOUND: $filename"
+    fi
+}
+
+# 1. WAN2.2 diffusion model
+link_model \
+    "Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors" \
+    "/comfyui/models/diffusion_models"
+
+# 2. UMT5 text encoder
+link_model \
+    "umt5_xxl_fp8_e4m3fn_scaled.safetensors" \
+    "/comfyui/models/text_encoders"
+
+# 3. WAN VAE
+link_model \
+    "wan_2.1_vae.safetensors" \
+    "/comfyui/models/vae"
+
+# 4. CLIP Vision
+link_model \
+    "clip_vision_h.safetensors" \
+    "/comfyui/models/clip_vision"
+
+# 5. LightX2V LoRA
+link_model \
+    "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors" \
+    "/comfyui/models/loras"
+
+# 6. WanAnimate Relight LoRA
+link_model \
+    "WanAnimate_relight_lora_fp16.safetensors" \
+    "/comfyui/models/loras"
+
+# 7. ViTPose
+link_model \
+    "vitpose-l-wholebody.onnx" \
+    "/comfyui/models/detection"
+
+# 8. YOLO
+link_model \
+    "yolov10m.onnx" \
+    "/comfyui/models/detection"
+
+# 9. SAM2
+# Cached repository currently contains the -fp16 filename.
+# Expose it using the filename accepted by the workflow node.
+link_model \
+    "sam2.1_hiera_base_plus-fp16.safetensors" \
+    "/comfyui/models/sam2" \
+    "sam2.1_hiera_base_plus.safetensors"
+
+echo "============================================================"
+echo "[WAN22] Final mapped files"
+echo "============================================================"
+
+for dir in \
+    diffusion_models \
+    text_encoders \
+    vae \
+    clip_vision \
+    loras \
+    detection \
+    sam2
+do
+    echo "[WAN22] /comfyui/models/$dir"
+    ls -lah "/comfyui/models/$dir" 2>/dev/null || true
+done
+
+echo "============================================================"
+echo "[WAN22] Cached Model auto-discovery finished"
+echo "============================================================"
+EOF
+
+RUN chmod +x /usr/local/bin/wan22-map-models.sh
 
 # ============================================================
-# Runtime model mapper
-#
-# Cached Models are mounted under /runpod-volume at runtime.
-# We create symlinks only -- models are NOT copied.
+# Startup wrapper
+# First map cached models, then launch official RunPod worker.
 # ============================================================
-RUN printf '%s\n' \
-'#!/bin/bash' \
-'set -e' \
-'' \
-'echo "============================================="' \
-'echo " WAN2.2 cached model mapper"' \
-'echo "============================================="' \
-'' \
-'for dir in diffusion_models text_encoders vae clip_vision loras detection sam2; do' \
-'    SRC="/runpod-volume/models/$dir"' \
-'    DST="/comfyui/models/$dir"' \
-'    mkdir -p "$DST"' \
-'' \
-'    if [ -d "$SRC" ]; then' \
-'        echo "[WAN22] Mapping $SRC -> $DST"' \
-'        find "$SRC" -maxdepth 1 -type f -exec ln -sf {} "$DST/" \;' \
-'    else' \
-'        echo "[WAN22] WARNING: cached model directory not found: $SRC"' \
-'    fi' \
-'done' \
-'' \
-'# SAM2 custom node only accepts the standard filename.' \
-'# Our cached FP16 model is exposed under that accepted filename via symlink.' \
-'SAM_SRC="/runpod-volume/models/sam2/sam2.1_hiera_base_plus-fp16.safetensors"' \
-'SAM_DST="/comfyui/models/sam2/sam2.1_hiera_base_plus.safetensors"' \
-'' \
-'if [ -f "$SAM_SRC" ]; then' \
-'    ln -sf "$SAM_SRC" "$SAM_DST"' \
-'    echo "[WAN22] SAM2 alias created: sam2.1_hiera_base_plus.safetensors"' \
-'fi' \
-'' \
-'echo "[WAN22] Model mapping finished."' \
-'' \
-'exec /start.sh' \
-> /usr/local/bin/wan22-start.sh \
-    && chmod +x /usr/local/bin/wan22-start.sh
+RUN cat > /usr/local/bin/wan22-start.sh <<'EOF'
+#!/bin/bash
+set -e
+
+/usr/local/bin/wan22-map-models.sh
+
+exec /start.sh
+EOF
+
+RUN chmod +x /usr/local/bin/wan22-start.sh
 
 WORKDIR /comfyui
 
