@@ -361,4 +361,26 @@ RUN chmod +x /usr/local/bin/wan22-start.sh
 
 WORKDIR /comfyui
 
+# ============================================================
+# WAN22 URL Input / MP4 Output Adapter
+# ============================================================
+RUN cp /handler.py /official_handler.py \
+    && mkdir -p /opt/wan22
+
+COPY handler.py /handler.py
+COPY wan22_workflow.json /opt/wan22/wan22_workflow.json
+
+RUN /opt/venv/bin/python -m py_compile /handler.py \
+    && /opt/venv/bin/python - <<'PY2'
+import json
+from pathlib import Path
+wf=json.loads(Path('/opt/wan22/wan22_workflow.json').read_text(encoding='utf-8'))
+assert wf['10']['class_type']=='LoadImage'
+assert wf['301']['class_type']=='VHS_LoadVideo'
+assert wf['19']['class_type']=='SaveVideo'
+assert wf['19']['inputs']['video']==['385',0]
+assert wf['367']['inputs']['model']=='sam2.1_hiera_base_plus.safetensors'
+print('[WAN22] Adapter static validation PASS')
+PY2
+
 CMD ["/usr/local/bin/wan22-start.sh"]
