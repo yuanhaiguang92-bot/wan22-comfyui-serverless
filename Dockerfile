@@ -350,6 +350,33 @@ EOF
 RUN chmod +x /usr/local/bin/wan22-map-models.sh
 
 # ============================================================
+# WAN22 custom RunPod adapter + baked workflow
+# IMPORTANT: /start.sh from worker-comfyui 5.10.0 launches /handler.py.
+# Preserve the official handler as an importable helper, then replace /handler.py
+# with our WAN22 adapter.
+# ============================================================
+
+RUN cp /handler.py /official_handler.py \
+    && mkdir -p /opt/wan22
+
+COPY handler.py /handler.py
+COPY wan22_workflow.json /opt/wan22/wan22_workflow.json
+
+RUN /opt/venv/bin/python -m py_compile /handler.py /official_handler.py \
+    && test -s /opt/wan22/wan22_workflow.json \
+    && /opt/venv/bin/python - <<'PYVERIFY'
+import json
+from pathlib import Path
+p = Path('/opt/wan22/wan22_workflow.json')
+w = json.loads(p.read_text())
+for node in ('10','19','301','355','361','366','378','381','382','385','386'):
+    if node not in w:
+        raise RuntimeError(f'Missing required WAN22 workflow node: {node}')
+print('[WAN22] Custom handler compile: OK')
+print('[WAN22] Baked workflow nodes:', len(w))
+PYVERIFY
+
+# ============================================================
 # Startup
 # ============================================================
 
