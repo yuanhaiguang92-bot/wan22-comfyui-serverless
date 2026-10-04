@@ -9,38 +9,55 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================================
-# 1. WanAnimate preprocessing
+# Custom Nodes
 # ============================================================
+
 RUN git clone https://github.com/kijai/ComfyUI-WanAnimatePreprocess.git \
       /comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess \
     && cd /comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess \
     && git checkout e63d6e71ae4c271f3f81211a7ca7f87607b7e50d
 
 # ============================================================
-# 2. Segment Anything 2
+# FIX: ONNX detection model list cache on current ComfyUI
 # ============================================================
+
+RUN /opt/venv/bin/python - <<'PY'
+from pathlib import Path
+
+p = Path("/comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess/nodes.py")
+s = p.read_text()
+
+old = 'folder_paths.filename_list_cache.pop("detection", None)'
+
+new = '''folder_paths.filename_list_cache.pop("detection", None)
+if hasattr(folder_paths, "cache_helper"):
+    folder_paths.cache_helper.clear()'''
+
+if old not in s:
+    raise SystemExit("ERROR: expected detection cache line not found")
+
+p.write_text(s.replace(old, new, 1))
+
+print("WAN22 ONNX detection cache fix applied")
+PY
+
 RUN git clone https://github.com/kijai/ComfyUI-segment-anything-2.git \
       /comfyui/custom_nodes/ComfyUI-segment-anything-2 \
     && cd /comfyui/custom_nodes/ComfyUI-segment-anything-2 \
     && git checkout c59676b008a76237002926f684d0ca3a9b29ac54
 
-# ============================================================
-# 3. KJNodes
-# ============================================================
 RUN git clone https://github.com/kijai/ComfyUI-KJNodes.git \
       /comfyui/custom_nodes/ComfyUI-KJNodes \
     && cd /comfyui/custom_nodes/ComfyUI-KJNodes \
     && git checkout 00da1910634fbf314d407608efb281ae6f7f1ba2
 
-# ============================================================
-# 4. VideoHelperSuite
-# ============================================================
 RUN git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git \
       /comfyui/custom_nodes/ComfyUI-VideoHelperSuite
 
 # ============================================================
-# Install dependencies
+# Install Custom Node Requirements
 # ============================================================
+
 RUN set -eux; \
     for req in /comfyui/custom_nodes/*/requirements.txt; do \
         if [ -f "$req" ]; then \
@@ -50,8 +67,9 @@ RUN set -eux; \
     /opt/venv/bin/python -m pip install --no-cache-dir "click<=8.1.8"
 
 # ============================================================
-# ComfyUI model directories
+# ComfyUI Model Directories
 # ============================================================
+
 RUN mkdir -p \
     /comfyui/models/diffusion_models \
     /comfyui/models/text_encoders \
@@ -62,13 +80,9 @@ RUN mkdir -p \
     /comfyui/models/sam2
 
 # ============================================================
-# Runtime Cached Model auto-discovery
-#
-# Important:
-# - No model is copied.
-# - Only symlinks are created.
-# - Search is restricted to likely RunPod cache/mount roots.
+# RunPod Cached Model Auto Discovery
 # ============================================================
+
 RUN cat > /usr/local/bin/wan22-map-models.sh <<'EOF'
 #!/bin/bash
 set -u
@@ -106,8 +120,7 @@ link_model () {
     found=""
 
     for root in $SEARCH_ROOTS; do
-        found="$(find "$root" -type f -name "$filename" -print -quit 2>/dev/null || true)"
-
+        found="$(find "$root" -name "$filename" -print -quit 2>/dev/null || true)"
         if [ -n "$found" ]; then
             break
         fi
@@ -115,62 +128,70 @@ link_model () {
 
     if [ -n "$found" ]; then
         mkdir -p "$target_dir"
-        ln -sf "$found" "$target_dir/$target_name"
 
-        echo "[WAN22] FOUND: $found"
-        echo "[WAN22] LINK : $target_dir/$target_name"
+        resolved="$(readlink -f "$found" 2>/dev/null || true)"
+
+        if [ -n "$resolved" ]; then
+            ln -sf "$resolved" "$target_dir/$target_name"
+            echo "[WAN22] FOUND: $found"
+            echo "[WAN22] RESOLVED: $resolved"
+            echo "[WAN22] LINK : $target_dir/$target_name"
+        else
+            ln -sf "$found" "$target_dir/$target_name"
+            echo "[WAN22] FOUND: $found"
+            echo "[WAN22] LINK : $target_dir/$target_name"
+        fi
     else
         echo "[WAN22] NOT FOUND: $filename"
     fi
 }
 
-# 1. WAN2.2 diffusion model
+# WAN2.2 diffusion model
 link_model \
-    "Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors" \
-    "/comfyui/models/diffusion_models"
+"Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors" \
+"/comfyui/models/diffusion_models"
 
-# 2. UMT5 text encoder
+# Text encoder
 link_model \
-    "umt5_xxl_fp8_e4m3fn_scaled.safetensors" \
-    "/comfyui/models/text_encoders"
+"umt5_xxl_fp8_e4m3fn_scaled.safetensors" \
+"/comfyui/models/text_encoders"
 
-# 3. WAN VAE
+# VAE
 link_model \
-    "wan_2.1_vae.safetensors" \
-    "/comfyui/models/vae"
+"wan_2.1_vae.safetensors" \
+"/comfyui/models/vae"
 
-# 4. CLIP Vision
+# CLIP Vision
 link_model \
-    "clip_vision_h.safetensors" \
-    "/comfyui/models/clip_vision"
+"clip_vision_h.safetensors" \
+"/comfyui/models/clip_vision"
 
-# 5. LightX2V LoRA
+# LightX2V LoRA
 link_model \
-    "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors" \
-    "/comfyui/models/loras"
+"lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors" \
+"/comfyui/models/loras"
 
-# 6. WanAnimate Relight LoRA
+# WanAnimate Relight LoRA
 link_model \
-    "WanAnimate_relight_lora_fp16.safetensors" \
-    "/comfyui/models/loras"
+"WanAnimate_relight_lora_fp16.safetensors" \
+"/comfyui/models/loras"
 
-# 7. ViTPose
+# ViTPose ONNX
 link_model \
-    "vitpose-l-wholebody.onnx" \
-    "/comfyui/models/detection"
+"vitpose-l-wholebody.onnx" \
+"/comfyui/models/detection"
 
-# 8. YOLO
+# YOLO ONNX
 link_model \
-    "yolov10m.onnx" \
-    "/comfyui/models/detection"
+"yolov10m.onnx" \
+"/comfyui/models/detection"
 
-# 9. SAM2
-# Cached repository currently contains the -fp16 filename.
-# Expose it using the filename accepted by the workflow node.
+# SAM2
+# Cached file is fp16 version, but workflow/node accepts standard filename.
 link_model \
-    "sam2.1_hiera_base_plus-fp16.safetensors" \
-    "/comfyui/models/sam2" \
-    "sam2.1_hiera_base_plus.safetensors"
+"sam2.1_hiera_base_plus-fp16.safetensors" \
+"/comfyui/models/sam2" \
+"sam2.1_hiera_base_plus.safetensors"
 
 echo "============================================================"
 echo "[WAN22] Final mapped files"
@@ -197,9 +218,9 @@ EOF
 RUN chmod +x /usr/local/bin/wan22-map-models.sh
 
 # ============================================================
-# Startup wrapper
-# First map cached models, then launch official RunPod worker.
+# Startup
 # ============================================================
+
 RUN cat > /usr/local/bin/wan22-start.sh <<'EOF'
 #!/bin/bash
 set -e
