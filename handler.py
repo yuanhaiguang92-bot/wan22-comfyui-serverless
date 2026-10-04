@@ -24,6 +24,7 @@ import official_handler
 # WAN2.2 Serverless Adapter
 # V2: robust SaveVideo discovery + history-first lookup
 #     + safe filesystem fallback + optional workflow hot update
+#     + FFmpeg audio mux (bring original video's audio into final)
 # ============================================================
 
 COMFY_INPUT = Path("/comfyui/input")
@@ -171,6 +172,128 @@ def _probe_video(path):
 
 def _validate_video(path):
     return _probe_video(path)
+
+
+def _mux_audio(silent_video, source_video):
+    """
+    Bring the ORIGINAL driving video's (source_video) audio track into the
+    silent final result (silent_video).
+
+    - source has no audio track -> return the silent version (no error)
+    - mux fails / verify fails  -> return the silent version (keep original, do not delete)
+    - success                   -> return the new muxed file path (video + audio)
+    """
+    silent_video = Path(silent_video)
+    source_video = Path(source_video)
+
+    # 1) Does the source driving video have an audio stream?
+    try:
+        probe = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "a",
+                "-show_entries",
+                "stream=codec_type",
+                "-of",
+                "csv=p=0",
+                str(source_video),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        has_audio = "audio" in (probe.stdout or "")
+    except Exception as e:
+        _log(f"mux: probe source audio failed, keep silent: {e}")
+        return silent_video
+
+    if not has_audio:
+        _log("mux: source video has no audio track, keep silent output")
+        return silent_video
+
+    # 2) Mux: copy video stream (no re-encode), encode audio to AAC, shortest.
+    out_path = silent_video.with_name(silent_video.stem + "_audio.mp4")
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(silent_video),
+                "-i",
+                str(source_video),
+                "-map",
+                "0:v:0",
+                "-map",
+                "1:a:0",
+                "-c:v",
+                "copy",
+                "-c:a",
+                "aac",
+                "-shortest",
+                str(out_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+    except Exception as e:
+        _log(f"mux: ffmpeg failed, keep silent: {e}")
+        return silent_video
+
+    if not out_path.is_file() or out_path.stat().st_size < 2000:
+        _log("mux: output missing/too small, keep silent")
+        return silent_video
+
+    # 3) Verify the muxed file really has both a video and an audio stream.
+    try:
+        v = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v",
+                "-show_entries",
+                "stream=codec_type",
+                "-of",
+                "csv=p=0",
+                str(out_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        ).stdout
+        a = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "a",
+                "-show_entries",
+                "stream=codec_type",
+                "-of",
+                "csv=p=0",
+                str(out_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        ).stdout
+    except Exception as e:
+        _log(f"mux: verify failed, keep silent: {e}")
+        return silent_video
+
+    if "video" in v and "audio" in a:
+        _log(f"mux: success, final with audio -> {out_path}")
+        return out_path
+
+    _log("mux: verify did not pass, keep silent")
+    return silent_video
 
 
 def _load_workflow():
@@ -787,6 +910,11 @@ def handler(job):
             ph,
             started_wall,
         )
+
+        # Mux the original driving video's audio back into the final video.
+        # On any failure (no audio / mux error) this safely returns the
+        # original silent final_video, so the task never fails because of audio.
+        final_video = _mux_audio(final_video, video_path)
 
         final_meta = _probe_video(final_video)
         size = final_video.stat().st_size
