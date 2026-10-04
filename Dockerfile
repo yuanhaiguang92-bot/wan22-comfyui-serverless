@@ -17,30 +17,6 @@ RUN git clone https://github.com/kijai/ComfyUI-WanAnimatePreprocess.git \
     && cd /comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess \
     && git checkout e63d6e71ae4c271f3f81211a7ca7f87607b7e50d
 
-# ============================================================
-# FIX: ONNX detection model list cache on current ComfyUI
-# ============================================================
-
-RUN /opt/venv/bin/python - <<'PY'
-from pathlib import Path
-
-p = Path("/comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess/nodes.py")
-s = p.read_text()
-
-old = 'folder_paths.filename_list_cache.pop("detection", None)'
-
-new = '''folder_paths.filename_list_cache.pop("detection", None)
-if hasattr(folder_paths, "cache_helper"):
-    folder_paths.cache_helper.clear()'''
-
-if old not in s:
-    raise SystemExit("ERROR: expected detection cache line not found")
-
-p.write_text(s.replace(old, new, 1))
-
-print("WAN22 ONNX detection cache fix applied")
-PY
-
 RUN git clone https://github.com/kijai/ComfyUI-segment-anything-2.git \
       /comfyui/custom_nodes/ComfyUI-segment-anything-2 \
     && cd /comfyui/custom_nodes/ComfyUI-segment-anything-2 \
@@ -55,7 +31,7 @@ RUN git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git \
       /comfyui/custom_nodes/ComfyUI-VideoHelperSuite
 
 # ============================================================
-# Install Custom Node Requirements
+# Custom Node Requirements
 # ============================================================
 
 RUN set -eux; \
@@ -67,7 +43,7 @@ RUN set -eux; \
     /opt/venv/bin/python -m pip install --no-cache-dir "click<=8.1.8"
 
 # ============================================================
-# ComfyUI Model Directories
+# Model Directories
 # ============================================================
 
 RUN mkdir -p \
@@ -85,7 +61,7 @@ RUN mkdir -p \
 
 RUN cat > /usr/local/bin/wan22-map-models.sh <<'EOF'
 #!/bin/bash
-set -u
+set -eu
 
 echo "============================================================"
 echo "[WAN22] Cached Model auto-discovery starting"
@@ -106,8 +82,8 @@ do
 done
 
 if [ -z "$SEARCH_ROOTS" ]; then
-    echo "[WAN22] ERROR: No expected model/cache roots are available."
-    exit 0
+    echo "[WAN22] ERROR: No expected model/cache roots available."
+    exit 1
 fi
 
 link_model () {
@@ -121,80 +97,98 @@ link_model () {
 
     for root in $SEARCH_ROOTS; do
         found="$(find "$root" -name "$filename" -print -quit 2>/dev/null || true)"
+
         if [ -n "$found" ]; then
             break
         fi
     done
 
-    if [ -n "$found" ]; then
-        mkdir -p "$target_dir"
-
-        resolved="$(readlink -f "$found" 2>/dev/null || true)"
-
-        if [ -n "$resolved" ]; then
-            ln -sf "$resolved" "$target_dir/$target_name"
-            echo "[WAN22] FOUND: $found"
-            echo "[WAN22] RESOLVED: $resolved"
-            echo "[WAN22] LINK : $target_dir/$target_name"
-        else
-            ln -sf "$found" "$target_dir/$target_name"
-            echo "[WAN22] FOUND: $found"
-            echo "[WAN22] LINK : $target_dir/$target_name"
-        fi
-    else
+    if [ -z "$found" ]; then
         echo "[WAN22] NOT FOUND: $filename"
+        return 1
+    fi
+
+    mkdir -p "$target_dir"
+
+    resolved="$(readlink -f "$found" 2>/dev/null || true)"
+
+    if [ -n "$resolved" ]; then
+        ln -sf "$resolved" "$target_dir/$target_name"
+        echo "[WAN22] FOUND   : $found"
+        echo "[WAN22] RESOLVED: $resolved"
+    else
+        ln -sf "$found" "$target_dir/$target_name"
+        echo "[WAN22] FOUND   : $found"
+    fi
+
+    echo "[WAN22] LINK    : $target_dir/$target_name"
+
+    if [ ! -e "$target_dir/$target_name" ]; then
+        echo "[WAN22] ERROR: link verification failed: $target_dir/$target_name"
+        return 1
     fi
 }
 
-# WAN2.2 diffusion model
+# ============================================================
+# Main WAN2.2 Models
+# ============================================================
+
 link_model \
 "Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors" \
 "/comfyui/models/diffusion_models"
 
-# Text encoder
 link_model \
 "umt5_xxl_fp8_e4m3fn_scaled.safetensors" \
 "/comfyui/models/text_encoders"
 
-# VAE
 link_model \
 "wan_2.1_vae.safetensors" \
 "/comfyui/models/vae"
 
-# CLIP Vision
 link_model \
 "clip_vision_h.safetensors" \
 "/comfyui/models/clip_vision"
 
-# LightX2V LoRA
+# ============================================================
+# LoRA
+# ============================================================
+
 link_model \
 "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors" \
 "/comfyui/models/loras"
 
-# WanAnimate Relight LoRA
 link_model \
 "WanAnimate_relight_lora_fp16.safetensors" \
 "/comfyui/models/loras"
 
-# ViTPose ONNX
+# ============================================================
+# ONNX Detection
+# These MUST exist BEFORE ComfyUI imports WanAnimatePreprocess.
+# ============================================================
+
 link_model \
 "vitpose-l-wholebody.onnx" \
 "/comfyui/models/detection"
 
-# YOLO ONNX
 link_model \
 "yolov10m.onnx" \
 "/comfyui/models/detection"
 
+# ============================================================
 # SAM2
-# Cached file is fp16 version, but workflow/node accepts standard filename.
+# ============================================================
+
 link_model \
 "sam2.1_hiera_base_plus-fp16.safetensors" \
 "/comfyui/models/sam2" \
 "sam2.1_hiera_base_plus.safetensors"
 
+# ============================================================
+# Final Verification
+# ============================================================
+
 echo "============================================================"
-echo "[WAN22] Final mapped files"
+echo "[WAN22] Final model mapping verification"
 echo "============================================================"
 
 for dir in \
@@ -206,12 +200,22 @@ for dir in \
     detection \
     sam2
 do
+    echo ""
     echo "[WAN22] /comfyui/models/$dir"
-    ls -lah "/comfyui/models/$dir" 2>/dev/null || true
+    ls -lah "/comfyui/models/$dir" || true
 done
 
+echo ""
+echo "[WAN22] Detection verification"
+
+test -e "/comfyui/models/detection/vitpose-l-wholebody.onnx"
+test -e "/comfyui/models/detection/yolov10m.onnx"
+
+echo "[WAN22] vitpose OK"
+echo "[WAN22] yolov10m OK"
+
 echo "============================================================"
-echo "[WAN22] Cached Model auto-discovery finished"
+echo "[WAN22] Cached Model mapping completed BEFORE ComfyUI startup"
 echo "============================================================"
 EOF
 
@@ -219,13 +223,32 @@ RUN chmod +x /usr/local/bin/wan22-map-models.sh
 
 # ============================================================
 # Startup
+#
+# IMPORTANT:
+# Map all Cached Models FIRST.
+# Only AFTER mapping finishes do we launch the official
+# RunPod /start.sh, which starts ComfyUI and imports custom nodes.
+# This ensures detection/*.onnx exists before
+# WanAnimatePreprocess calls get_filename_list("detection").
 # ============================================================
 
 RUN cat > /usr/local/bin/wan22-start.sh <<'EOF'
 #!/bin/bash
 set -e
 
+echo "============================================================"
+echo "[WAN22] PRE-COMFYUI STARTUP"
+echo "============================================================"
+
 /usr/local/bin/wan22-map-models.sh
+
+echo ""
+echo "[WAN22] Detection files immediately before /start.sh:"
+ls -lah /comfyui/models/detection
+
+echo ""
+echo "[WAN22] Starting official RunPod ComfyUI worker..."
+echo "============================================================"
 
 exec /start.sh
 EOF
