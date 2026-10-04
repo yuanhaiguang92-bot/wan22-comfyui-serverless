@@ -272,7 +272,6 @@
         3
       ],
       "keep_model_loaded": false,
-      "coordinates_positive": false,
       "individual_objects": false
     },
     "class_type": "Sam2Segmentation",
