@@ -148,7 +148,28 @@ RUN set -eux; \
             /opt/venv/bin/python -m pip install --no-cache-dir -r "$req"; \
         fi; \
     done; \
-    /opt/venv/bin/python -m pip install --no-cache-dir "click<=8.1.8"
+    /opt/venv/bin/python -m pip install --no-cache-dir "click<=8.1.8"; \
+    /opt/venv/bin/python -m pip uninstall -y onnxruntime onnxruntime-gpu || true; \
+    /opt/venv/bin/python -m pip install --no-cache-dir "onnxruntime-gpu==1.26.0"
+
+# Fail the Docker build if ORT is not the CUDA 12.8-compatible build we expect.
+RUN /opt/venv/bin/python - <<'PY'
+import onnxruntime as ort
+
+print("============================================================")
+print("[WAN22] ONNX Runtime build-time verification")
+print("[WAN22] ORT version:", ort.__version__)
+print("[WAN22] Providers:", ort.get_available_providers())
+print("============================================================")
+
+if ort.__version__ != "1.26.0":
+    raise RuntimeError(f"WAN22 ORT ERROR: expected 1.26.0, got {ort.__version__}")
+
+if "CUDAExecutionProvider" not in ort.get_available_providers():
+    raise RuntimeError(
+        "WAN22 ORT ERROR: CUDAExecutionProvider is not registered"
+    )
+PY
 
 # ============================================================
 # Model Directories
@@ -343,6 +364,21 @@ echo "============================================================"
 /usr/local/bin/wan22-map-models.sh
 
 echo ""
+echo "[WAN22] ONNX Runtime GPU startup verification:"
+/opt/venv/bin/python - <<'PY'
+import onnxruntime as ort
+
+print("[WAN22] ORT version:", ort.__version__)
+print("[WAN22] Available providers:", ort.get_available_providers())
+
+if ort.__version__ != "1.26.0":
+    raise RuntimeError(f"WAN22 ORT ERROR: expected 1.26.0, got {ort.__version__}")
+
+if "CUDAExecutionProvider" not in ort.get_available_providers():
+    raise RuntimeError("WAN22 ORT ERROR: CUDAExecutionProvider unavailable")
+PY
+
+echo ""
 echo "[WAN22] Detection files immediately before /start.sh:"
 ls -lah /comfyui/models/detection
 
@@ -360,27 +396,5 @@ RUN chmod +x /usr/local/bin/wan22-start.sh
 # ============================================================
 
 WORKDIR /comfyui
-
-# ============================================================
-# WAN22 URL Input / MP4 Output Adapter
-# ============================================================
-RUN cp /handler.py /official_handler.py \
-    && mkdir -p /opt/wan22
-
-COPY handler.py /handler.py
-COPY wan22_workflow.json /opt/wan22/wan22_workflow.json
-
-RUN /opt/venv/bin/python -m py_compile /handler.py \
-    && /opt/venv/bin/python - <<'PY2'
-import json
-from pathlib import Path
-wf=json.loads(Path('/opt/wan22/wan22_workflow.json').read_text(encoding='utf-8'))
-assert wf['10']['class_type']=='LoadImage'
-assert wf['301']['class_type']=='VHS_LoadVideo'
-assert wf['19']['class_type']=='SaveVideo'
-assert wf['19']['inputs']['video']==['385',0]
-assert wf['367']['inputs']['model']=='sam2.1_hiera_base_plus.safetensors'
-print('[WAN22] Adapter static validation PASS')
-PY2
 
 CMD ["/usr/local/bin/wan22-start.sh"]
