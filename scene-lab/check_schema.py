@@ -1,6 +1,24 @@
 """Offline candidate graph input-name check against exported target object_info."""
 import argparse,json
 from pathlib import Path
+def normalize_legacy_inputs(graph, info):
+    """Remove only the two obsolete device widgets confirmed by runtime schema.
+
+    The caller passes its own graph copy. Never modify the baseline file, and
+    never discard required/optional/hidden inputs declared by the installed node.
+    """
+    changes=[]
+    for nid,node in graph.items():
+        kind=node['class_type']
+        if kind not in {'BlockifyMask','DrawMaskOnImage'} or kind not in info:
+            continue
+        spec=info[kind].get('input',{})
+        declared=set().union(*(set(spec.get(group,{}) or {}) for group in ('required','optional','hidden')))
+        if 'device' in node['inputs'] and 'device' not in declared:
+            node['inputs'].pop('device')
+            changes.append({'node_id':nid,'node_type':kind,'removed_input':'device'})
+    return changes
+
 def check(graph, info):
     errors=[]
     for nid,n in graph.items():

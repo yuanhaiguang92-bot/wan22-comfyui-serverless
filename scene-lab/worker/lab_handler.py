@@ -5,8 +5,8 @@ sys.path.insert(0,'/opt/wan22')
 import requests,runpod,websocket
 import baseline_handler as stable
 from lab_prepare import build,probe,validate_graph
-from lab_schema import check
-VERSION='0.1.2'
+from lab_schema import check,normalize_legacy_inputs
+VERSION='0.1.3'
 
 def progress(job,stage,**extra):
     payload={'version':VERSION,'stage':stage,'job_id':job.get('id'),**extra}
@@ -56,7 +56,7 @@ def handler(job):
         # Separate worker latch: deployment should keep this OFF until explicit approval.
         if os.getenv('WAN22_LAB_GPU_ENABLED')!='1':
             raise ValueError('独立worker推理未解锁')
-        if inp.get('lab_version')!=VERSION:raise ValueError('独立客户端版本不匹配')
+        if inp.get('lab_version') not in {'0.1.2',VERSION}:raise ValueError('独立客户端版本不匹配')
         mode=inp.get('mode')
         if mode not in {'person_only','person_scene','person_scene_combined'}:raise ValueError('无效测试模式')
         roles={'person':'image_url','video':'video_url'}
@@ -86,7 +86,10 @@ def handler(job):
         validate_graph(w)
         progress(job,'validating_runtime_schema',source_frames=n,requested_model_frames=w['381']['inputs']['length'])
         response=requests.get(f'http://{stable.official_handler.COMFY_HOST}/object_info',timeout=30)
-        response.raise_for_status();errors=check(w,response.json())
+        response.raise_for_status();schema=response.json()
+        adjustments=normalize_legacy_inputs(w,schema)
+        if adjustments:progress(job,'runtime_compatibility_adjusted',adjustments=adjustments)
+        errors=check(w,schema)
         if errors:raise ValueError('Runtime schema不匹配：'+'; '.join(errors[:8]))
         progress(job,'workflow_validated')
         pid,history=run_graph(job,w)

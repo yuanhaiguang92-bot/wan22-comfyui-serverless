@@ -41,6 +41,22 @@ class WorkerTests(unittest.TestCase):
         with patch.dict(os.environ,{'WAN22_LAB_GPU_ENABLED':'0'}):
             result=self.module.handler(self.job())
         self.assertEqual(result['status'],'failed');self.assertFalse(self.downloads)
+    def test_runtime_obsolete_device_widgets_are_removed_before_queue(self):
+        info=self.schema()
+        for kind in ('BlockifyMask','DrawMaskOnImage'):
+            info[kind]['input']['optional'].pop('device')
+        self.requests.get=lambda *a,**kw:types.SimpleNamespace(raise_for_status=lambda:None,json=lambda:info)
+        result=self.module.handler(self.job('person_scene_combined'))
+        self.assertEqual(result['status'],'completed')
+        self.assertNotIn('device',self.graph['368']['inputs'])
+        self.assertNotIn('device',self.graph['369']['inputs'])
+        self.assertEqual(self.w['368']['inputs']['device'],'cpu')
+    def test_declared_device_and_other_unknown_inputs_are_not_discarded(self):
+        graph=copy.deepcopy(self.w);info=self.schema()
+        self.assertEqual(check_schema.normalize_legacy_inputs(graph,info),[])
+        graph['368']['inputs']['unrecognized']=True
+        check_schema.normalize_legacy_inputs(graph,info)
+        self.assertTrue(any('unrecognized' in e for e in check_schema.check(graph,info)))
     def test_candidate_wiring_and_exact_frame_window(self):
         result=self.module.handler(self.job())
         self.assertEqual(result['status'],'completed')
