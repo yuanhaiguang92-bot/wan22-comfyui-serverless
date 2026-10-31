@@ -1,0 +1,682 @@
+{
+  "10": {
+    "inputs": {
+      "image": "6731361cad70ec7c644451d241f8bb200f36ab491fc50aac8df6e71cab0c4e4c.webp"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Reference Image"
+    }
+  },
+  "19": {
+    "inputs": {
+      "video": [
+        "385",
+        0
+      ],
+      "filename_prefix": "video/ComfyUI",
+      "format": "auto",
+      "format.codec": "auto",
+      "codec": "auto"
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "SaveVideo"
+    }
+  },
+  "159": {
+    "inputs": {
+      "value": 400
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Width"
+    }
+  },
+  "160": {
+    "inputs": {
+      "value": 720
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Height"
+    }
+  },
+  "301": {
+    "inputs": {
+      "video": "412e7b415cb3fed26bb434480a6714b9a8bf558a07118ed4810ae9e03bb2ce4f.mp4",
+      "force_rate": 0,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "AnimateDiff",
+      "videopreview": {
+        "hidden": false,
+        "params": {
+          "custom_height": 0,
+          "custom_width": 0,
+          "filename": "412e7b415cb3fed26bb434480a6714b9a8bf558a07118ed4810ae9e03bb2ce4f.mp4",
+          "force_rate": 0,
+          "format": "video/mp4",
+          "frame_load_cap": 0,
+          "select_every_nth": 1,
+          "skip_first_frames": 0,
+          "type": "input"
+        },
+        "paused": false
+      }
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {
+      "title": "Input Video"
+    }
+  },
+  "314": {
+    "inputs": {
+      "video_info": [
+        "301",
+        3
+      ]
+    },
+    "class_type": "VHS_VideoInfo",
+    "_meta": {
+      "title": "VHS_VideoInfo"
+    }
+  },
+  "349": {
+    "inputs": {
+      "clip": [
+        "373",
+        0
+      ],
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "350": {
+    "inputs": {
+      "model": [
+        "378",
+        0
+      ],
+      "lora_name": "WanAnimate_relight_lora_fp16.safetensors",
+      "strength_model": 1
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoraLoaderModelOnly"
+    }
+  },
+  "351": {
+    "inputs": {
+      "clip_vision": [
+        "375",
+        0
+      ],
+      "image": [
+        "371",
+        0
+      ],
+      "crop": "none"
+    },
+    "class_type": "CLIPVisionEncode",
+    "_meta": {
+      "title": "CLIPVisionEncode"
+    }
+  },
+  "352": {
+    "inputs": {
+      "images": [
+        "355",
+        0
+      ],
+      "fps": [
+        "314",
+        0
+      ],
+      "bit_depth": "auto",
+      "color_space": "sRGB"
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "CreateVideo"
+    }
+  },
+  "353": {
+    "inputs": {
+      "video": [
+        "352",
+        0
+      ],
+      "filename_prefix": "video/ComfyUI",
+      "format": "auto",
+      "format.codec": "auto",
+      "codec": "auto"
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "SaveVideo"
+    }
+  },
+  "354": {
+    "inputs": {
+      "video": [
+        "358",
+        0
+      ],
+      "filename_prefix": "video/ComfyUI",
+      "format": "auto",
+      "format.codec": "auto",
+      "codec": "auto"
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "SaveVideo"
+    }
+  },
+  "355": {
+    "inputs": {
+      "pose_data": [
+        "360",
+        0
+      ],
+      "width": [
+        "365",
+        0
+      ],
+      "height": [
+        "365",
+        1
+      ]
+    },
+    "class_type": "DrawViTPose",
+    "_meta": {
+      "title": "DrawViTPose"
+    }
+  },
+  "358": {
+    "inputs": {
+      "images": [
+        "369",
+        0
+      ],
+      "fps": [
+        "314",
+        0
+      ],
+      "bit_depth": "auto",
+      "color_space": "sRGB"
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "CreateVideo"
+    }
+  },
+  "359": {
+    "inputs": {
+      "video": [
+        "362",
+        0
+      ],
+      "filename_prefix": "video/ComfyUI",
+      "format": "auto",
+      "format.codec": "auto",
+      "codec": "auto"
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "SaveVideo"
+    }
+  },
+  "360": {
+    "inputs": {
+      "model": [
+        "366",
+        0
+      ],
+      "images": [
+        "364",
+        0
+      ],
+      "width": [
+        "365",
+        0
+      ],
+      "height": [
+        "365",
+        1
+      ]
+    },
+    "class_type": "PoseAndFaceDetection",
+    "_meta": {
+      "title": "PoseAndFaceDetection"
+    }
+  },
+  "361": {
+    "inputs": {
+      "sam2_model": [
+        "367",
+        0
+      ],
+      "image": [
+        "364",
+        0
+      ],
+      "bboxes": [
+        "360",
+        3
+      ],
+      "keep_model_loaded": false,
+      "individual_objects": false
+    },
+    "class_type": "Sam2Segmentation",
+    "_meta": {
+      "title": "Sam2Segmentation"
+    }
+  },
+  "362": {
+    "inputs": {
+      "images": [
+        "360",
+        1
+      ],
+      "fps": [
+        "314",
+        0
+      ],
+      "bit_depth": "auto",
+      "color_space": "sRGB"
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "CreateVideo"
+    }
+  },
+  "364": {
+    "inputs": {
+      "image": [
+        "301",
+        0
+      ],
+      "width": [
+        "159",
+        0
+      ],
+      "height": [
+        "160",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "crop": "center"
+    },
+    "class_type": "ImageScale",
+    "_meta": {
+      "title": "Resize Input Video"
+    }
+  },
+  "365": {
+    "inputs": {
+      "image": [
+        "364",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "GetImageSize"
+    }
+  },
+  "366": {
+    "inputs": {
+      "vitpose_model": "vitpose-l-wholebody.onnx",
+      "yolo_model": "yolov10m.onnx",
+      "onnx_device": "CUDAExecutionProvider"
+    },
+    "class_type": "OnnxDetectionModelLoader",
+    "_meta": {
+      "title": "OnnxDetectionModelLoader"
+    }
+  },
+  "367": {
+    "inputs": {
+      "model": "sam2.1_hiera_base_plus.safetensors",
+      "segmentor": "video",
+      "device": "cuda",
+      "precision": "fp16"
+    },
+    "class_type": "DownloadAndLoadSAM2Model",
+    "_meta": {
+      "title": "DownloadAndLoadSAM2Model"
+    }
+  },
+  "368": {
+    "inputs": {
+      "masks": [
+        "370",
+        0
+      ],
+      "block_size": 32,
+      "device": "cpu"
+    },
+    "class_type": "BlockifyMask",
+    "_meta": {
+      "title": "BlockifyMask"
+    }
+  },
+  "369": {
+    "inputs": {
+      "image": [
+        "364",
+        0
+      ],
+      "mask": [
+        "368",
+        0
+      ],
+      "color": "0, 0, 0",
+      "device": "cpu"
+    },
+    "class_type": "DrawMaskOnImage",
+    "_meta": {
+      "title": "DrawMaskOnImage"
+    }
+  },
+  "370": {
+    "inputs": {
+      "mask": [
+        "361",
+        0
+      ],
+      "expand": 10,
+      "incremental_expandrate": 0,
+      "tapered_corners": true,
+      "flip_input": false,
+      "blur_radius": 0,
+      "lerp_alpha": 1,
+      "decay_factor": 1,
+      "fill_holes": false
+    },
+    "class_type": "GrowMaskWithBlur",
+    "_meta": {
+      "title": "GrowMaskWithBlur"
+    }
+  },
+  "371": {
+    "inputs": {
+      "image": [
+        "10",
+        0
+      ],
+      "width": [
+        "159",
+        0
+      ],
+      "height": [
+        "160",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "crop": "center"
+    },
+    "class_type": "ImageScale",
+    "_meta": {
+      "title": "Resize Reference Image"
+    }
+  },
+  "372": {
+    "inputs": {
+      "unet_name": "Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNETLoader"
+    }
+  },
+  "373": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "CLIPLoader"
+    }
+  },
+  "374": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "VAELoader"
+    }
+  },
+  "375": {
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    },
+    "class_type": "CLIPVisionLoader",
+    "_meta": {
+      "title": "CLIPVisionLoader"
+    }
+  },
+  "376": {
+    "inputs": {
+      "clip": [
+        "373",
+        0
+      ],
+      "text": "the person is dancing"
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "377": {
+    "inputs": {
+      "model": [
+        "350",
+        0
+      ],
+      "shift": 8
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "ModelSamplingSD3"
+    }
+  },
+  "378": {
+    "inputs": {
+      "model": [
+        "372",
+        0
+      ],
+      "lora_name": "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors",
+      "strength_model": 1
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoraLoaderModelOnly"
+    }
+  },
+  "379": {
+    "inputs": {
+      "value": 250416347570032
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Seed"
+    }
+  },
+  "381": {
+    "inputs": {
+      "positive": [
+        "376",
+        0
+      ],
+      "negative": [
+        "349",
+        0
+      ],
+      "vae": [
+        "374",
+        0
+      ],
+      "clip_vision_output": [
+        "351",
+        0
+      ],
+      "reference_image": [
+        "371",
+        0
+      ],
+      "face_video": [
+        "360",
+        1
+      ],
+      "pose_video": [
+        "355",
+        0
+      ],
+      "background_video": [
+        "369",
+        0
+      ],
+      "character_mask": [
+        "368",
+        0
+      ],
+      "width": [
+        "159",
+        0
+      ],
+      "height": [
+        "160",
+        0
+      ],
+      "length": [
+        "301",
+        1
+      ],
+      "batch_size": 1,
+      "continue_motion_max_frames": 5,
+      "video_frame_offset": 0
+    },
+    "class_type": "WanAnimateToVideo",
+    "_meta": {
+      "title": "WanAnimateToVideo"
+    }
+  },
+  "382": {
+    "inputs": {
+      "model": [
+        "377",
+        0
+      ],
+      "positive": [
+        "381",
+        0
+      ],
+      "negative": [
+        "381",
+        1
+      ],
+      "latent_image": [
+        "381",
+        2
+      ],
+      "seed": [
+        "379",
+        0
+      ],
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "383": {
+    "inputs": {
+      "samples": [
+        "386",
+        0
+      ],
+      "vae": [
+        "374",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAEDecode"
+    }
+  },
+  "384": {
+    "inputs": {
+      "image": [
+        "383",
+        0
+      ],
+      "batch_index": [
+        "381",
+        4
+      ],
+      "length": 4096
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "ImageFromBatch"
+    }
+  },
+  "385": {
+    "inputs": {
+      "images": [
+        "384",
+        0
+      ],
+      "fps": [
+        "314",
+        0
+      ],
+      "bit_depth": "auto",
+      "color_space": "sRGB",
+      "audio": [
+        "301",
+        2
+      ]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "CreateVideo"
+    }
+  },
+  "386": {
+    "inputs": {
+      "samples": [
+        "382",
+        0
+      ],
+      "trim_amount": [
+        "381",
+        3
+      ]
+    },
+    "class_type": "TrimVideoLatent",
+    "_meta": {
+      "title": "TrimVideoLatent"
+    }
+  }
+}
