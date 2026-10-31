@@ -1,0 +1,6 @@
+{
+  "test_endpoint_id": "",
+  "expected_worker_version": "0.1.2",
+  "paid_generation_enabled": false,
+  "credentials_file": ""
+}
