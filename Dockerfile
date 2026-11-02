@@ -165,6 +165,11 @@ RUN set -eux; \
     /opt/venv/bin/python -m pip install --no-cache-dir "onnxruntime-gpu==1.26.0" && \
     /opt/venv/bin/python -m pip install --no-cache-dir "sageattention==1.0.6"
 
+# perf-lab: SageAttention 1.x uses Triton, which JIT-compiles a small C launcher -> needs a C compiler + Python headers
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev python3-dev && rm -rf /var/lib/apt/lists/* && \
+    /opt/venv/bin/python -c "import sysconfig,os; inc=sysconfig.get_paths()['include']; ok=os.path.exists(os.path.join(inc,'Python.h')); print('python include', inc, ok); assert ok, 'Python.h missing for venv python'" && \
+    /opt/venv/bin/python -c "import sageattention, triton; print('sageattention ok, triton', triton.__version__)"
+
 # Fail the Docker build if ORT is not the CUDA 12.8-compatible build we expect.
 RUN /opt/venv/bin/python - <<'PY'
 import onnxruntime as ort
