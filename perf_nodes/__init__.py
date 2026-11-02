@@ -48,19 +48,23 @@ class WanPerfFacingSelect:
 
     @staticmethod
     def facing_away(meta):
-        b = meta.get("keypoints_body") or []
+        b = meta.get("keypoints_body") if isinstance(meta, dict) else None
+        if b is None:
+            return False
+        b = [None if p is None else [float(x) for x in list(p)] for p in list(b)]   # 兼容 numpy 数组和列表
         if len(b) < 16:
             return False
         def sc(i):
             p = b[i]
-            return float(p[2]) if p is not None and len(p) > 2 else 0.0
+            return p[2] if p is not None and len(p) > 2 else 0.0
         face = max(sc(0), sc(14), sc(15))                 # 鼻子、右眼、左眼的置信度
         r, l = b[2], b[5]                                  # 右肩、左肩（画面坐标 0~1）
-        swapped = r is not None and l is not None and sc(2) > 0.3 and sc(5) > 0.3 and float(r[0]) > float(l[0]) + 0.01
+        swapped = r is not None and l is not None and sc(2) > 0.3 and sc(5) > 0.3 and r[0] > l[0] + 0.01
         return face < 0.35 and swapped
 
     def pick(self, pose_data, front_image, back_image, front_clip, back_clip, start, length, threshold):
-        metas = (pose_data or {}).get("pose_metas_original") or []
+        metas = (pose_data or {}).get("pose_metas_original") if isinstance(pose_data, dict) else None
+        metas = list(metas) if metas is not None else []
         seg = metas[start:start + length]
         away = sum(1 for m in seg if self.facing_away(m))
         ratio = away / len(seg) if seg else 0.0
