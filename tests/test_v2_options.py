@@ -59,9 +59,9 @@ class T(unittest.TestCase):
         self.assertNotIn("899", wf); self.assertEqual(wf["381"]["inputs"]["length"], ["301", 1])
     def test_sage_and_mask(self):
         o = H._clean_opts({"sage_attention": True, "mask_expand": 24, "window_frames": 77, "skip_debug_outputs": True})
-        self.assertEqual(o["sage_attention"], "auto")
+        self.assertEqual(o["sage_attention"], "sage")
         wf = H._prepare_workflow("i.png", "v.mp4", "tok", 1, opts=o, total_frames=200)
-        self.assertEqual(wf["880"]["class_type"], "PathchSageAttentionKJ"); self.assertEqual(wf["880"]["inputs"]["model"], ["377", 0])
+        self.assertEqual(wf["880"]["class_type"], "WanPerfAttentionOverride"); self.assertEqual(wf["880"]["inputs"]["model"], ["377", 0])
         ks = [k for k, n in wf.items() if n["class_type"] == "KSampler"]
         self.assertTrue(len(ks) >= 2 and all(wf[k]["inputs"]["model"] == ["880", 0] for k in ks))   # 续接的每一段都用加速
         self.assertEqual(wf["370"]["inputs"]["expand"], 24); self.assertEqual(links_ok(wf), [])

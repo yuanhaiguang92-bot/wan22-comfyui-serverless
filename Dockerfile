@@ -378,6 +378,7 @@ RUN cp /handler.py /official_handler.py \
     && mkdir -p /opt/wan22
 
 COPY handler.py /handler.py
+COPY perf_nodes /comfyui/custom_nodes/wan_perf_nodes
 COPY wan22_workflow.json /opt/wan22/wan22_workflow.json
 
 RUN /opt/venv/bin/python -m py_compile /handler.py /official_handler.py \
