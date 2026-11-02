@@ -331,7 +331,107 @@ def _load_workflow():
     return wf
 
 
-def _prepare_workflow(image_name, video_name, token, seed=None):
+# ===== v2 可选参数（opt-in）：不传这些参数时，工作流与原版逐字节一致 =====
+OPT_KEYS = ("width", "height", "mode", "prompt", "negative_prompt", "relight", "steps",
+            "force_rate", "window_frames", "skip_debug_outputs", "keep_audio", "timing")
+DEBUG_NODES = ("352", "353", "354", "358", "359", "362")   # 姿态/遮罩/检测的调试视频，最终结果用不到
+
+
+def _video_frames(path, force_rate=None):
+    """视频帧数（按 force_rate 重采样时按时长估算）。"""
+    cmd = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets",
+           "-show_entries", "stream=nb_read_packets,r_frame_rate,duration",
+           "-show_entries", "format=duration", "-of", "json", str(path)]
+    d = json.loads(subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=True).stdout or "{}")
+    st = (d.get("streams") or [{}])[0]
+    if force_rate:
+        dur = float(st.get("duration") or (d.get("format") or {}).get("duration") or 0)
+        return max(1, int(dur * float(force_rate)))
+    return max(1, int(st.get("nb_read_packets") or 0))
+
+
+def _clean_opts(inp):
+    o = {k: inp[k] for k in OPT_KEYS if k in inp and inp[k] is not None}
+    def _int(k, lo, hi, mult=1):
+        if k in o:
+            v = int(o[k])
+            if not (lo <= v <= hi) or v % mult:
+                raise ValueError(f"{k} must be {lo}..{hi}" + (f" and a multiple of {mult}" if mult > 1 else ""))
+            o[k] = v
+    _int("width", 256, 1536, 16); _int("height", 256, 1536, 16); _int("steps", 1, 30)
+    _int("force_rate", 8, 60)
+    if "window_frames" in o:
+        v = int(o["window_frames"])
+        if not (13 <= v <= 121) or (v - 1) % 4:
+            raise ValueError("window_frames must be 13..121 and 4n+1")
+        o["window_frames"] = v
+    if "mode" in o and o["mode"] not in ("replace", "animate"):
+        raise ValueError("mode must be replace or animate")
+    for k in ("prompt", "negative_prompt"):
+        if k in o:
+            o[k] = str(o[k])[:2000]
+    for k in ("relight", "skip_debug_outputs", "keep_audio", "timing"):
+        if k in o:
+            o[k] = bool(o[k])
+    return o
+
+
+def _apply_opts(wf, opts, total_frames=None):
+    if "width" in opts:
+        wf["159"]["inputs"]["value"] = opts["width"]
+    if "height" in opts:
+        wf["160"]["inputs"]["value"] = opts["height"]
+    if "prompt" in opts:
+        wf["376"]["inputs"]["text"] = opts["prompt"]
+    if "negative_prompt" in opts:
+        wf["349"]["inputs"]["text"] = opts["negative_prompt"]
+    if opts.get("relight") is False:          # 关闭光影融合：跳过 relight LoRA
+        wf["377"]["inputs"]["model"] = ["378", 0]
+        wf.pop("350", None)
+    if "steps" in opts:
+        wf["382"]["inputs"]["steps"] = opts["steps"]
+    if opts.get("mode") == "animate":         # 动作迁移：不保留参考视频背景，人物用图片里的场景
+        wf["381"]["inputs"].pop("background_video", None)
+        wf["381"]["inputs"].pop("character_mask", None)
+    if "force_rate" in opts:                   # 按指定帧率读取参考视频（帧越少越快）
+        wf["301"]["inputs"]["force_rate"] = opts["force_rate"]
+        wf["385"]["inputs"]["fps"] = opts["force_rate"]
+    if opts.get("skip_debug_outputs"):
+        for k in DEBUG_NODES:
+            wf.pop(k, None)
+    W = opts.get("window_frames")
+    if W and total_frames and total_frames > W:
+        _chain_windows(wf, W, total_frames)
+    return wf
+
+
+def _chain_windows(wf, W, N):
+    """长视频：官方续接方式。每段 W 帧，后一段接收前一段最后几帧作为动作延续（continue_motion），
+    从 video_frame_offset 接着生成；去掉重叠帧后依次拼接，最后截到 N 帧。"""
+    CONT = int(wf["381"]["inputs"].get("continue_motion_max_frames", 5))
+    overlap = max(0, (((CONT - 1) // 4) + 1) * 4 - 3)
+    n = 1 + -(-(N - W) // (W - overlap))
+    wf["381"]["inputs"]["length"] = W
+    prev_a, prev_f, merged = "381", "384", "384"
+    nid = 900
+    for i in range(1, n):
+        a, k, t, v, f, m = (str(nid + j) for j in range(6)); nid += 10
+        wf[a] = copy.deepcopy(wf["381"])
+        wf[a]["inputs"]["continue_motion"] = [prev_f, 0]
+        wf[a]["inputs"]["video_frame_offset"] = [prev_a, 5]
+        wf[k] = copy.deepcopy(wf["382"])
+        wf[k]["inputs"].update({"positive": [a, 0], "negative": [a, 1], "latent_image": [a, 2]})
+        wf[t] = {"class_type": "TrimVideoLatent", "inputs": {"samples": [k, 0], "trim_amount": [a, 3]}}
+        wf[v] = {"class_type": "VAEDecode", "inputs": {"samples": [t, 0], "vae": ["374", 0]}}
+        wf[f] = {"class_type": "ImageFromBatch", "inputs": {"image": [v, 0], "batch_index": [a, 4], "length": 4096}}
+        wf[m] = {"class_type": "ImageBatch", "inputs": {"image1": [merged, 0], "image2": [f, 0]}}
+        prev_a, prev_f, merged = a, f, m
+    wf["899"] = {"class_type": "ImageFromBatch", "inputs": {"image": [merged, 0], "batch_index": 0, "length": int(N)}}
+    wf["385"]["inputs"]["images"] = ["899", 0]
+    return n
+
+
+def _prepare_workflow(image_name, video_name, token, seed=None, opts=None, total_frames=None):
     wf = copy.deepcopy(_load_workflow())
 
     wf["10"]["inputs"]["image"] = image_name
@@ -364,10 +464,12 @@ def _prepare_workflow(image_name, video_name, token, seed=None):
 
         wf["379"]["inputs"]["value"] = seed
 
+    if opts:
+        _apply_opts(wf, opts, total_frames)
     return wf
 
 
-def _wait(prompt_id, client_id):
+def _wait(prompt_id, client_id, timings=None):
     ws = websocket.WebSocket()
     ws.settimeout(30)
     started = time.monotonic()
@@ -404,6 +506,9 @@ def _wait(prompt_id, client_id):
                     f"({data.get('node_type')}): "
                     f"{data.get('exception_message')}"
                 )
+
+            if timings is not None and msg.get("type") == "executing" and data.get("prompt_id") == prompt_id:
+                timings.append([data.get("node"), round(time.monotonic() - started, 2)])
 
             if (
                 msg.get("type") == "executing"
@@ -865,11 +970,17 @@ def handler(job):
         )
         input_meta = _validate_video(video_path)
 
+        opts = _clean_opts(inp)                   # v2 可选参数；没有就是原版行为
+        stage = {"download_s": round(time.time() - started_wall, 2)} if opts.get("timing") else None
+        total_frames = _video_frames(video_path, opts.get("force_rate")) if opts.get("window_frames") else None
+
         workflow = _prepare_workflow(
             image_path.name,
             video_path.name,
             token,
             seed,
+            opts=opts or None,
+            total_frames=total_frames,
         )
 
         client_id = str(uuid.uuid4())
@@ -887,10 +998,15 @@ def handler(job):
 
         _log(f"Queued ComfyUI prompt_id={prompt_id}")
 
+        node_timings = [] if opts.get("timing") else None
+        t_gen = time.time()
         _wait(
             prompt_id,
             client_id,
+            node_timings,
         )
+        if stage is not None:
+            stage["comfy_s"] = round(time.time() - t_gen, 2)
 
         history = official_handler.get_history(prompt_id)
         ph = _prompt_history(history, prompt_id)
@@ -914,7 +1030,11 @@ def handler(job):
         # Mux the original driving video's audio back into the final video.
         # On any failure (no audio / mux error) this safely returns the
         # original silent final_video, so the task never fails because of audio.
-        final_video = _mux_audio(final_video, video_path)
+        t_mux = time.time()
+        if opts.get("keep_audio", True):
+            final_video = _mux_audio(final_video, video_path)
+        if stage is not None:
+            stage["mux_s"] = round(time.time() - t_mux, 2)
 
         final_meta = _probe_video(final_video)
         size = final_video.stat().st_size
@@ -924,10 +1044,14 @@ def handler(job):
             f"size={size} bytes"
         )
 
+        t_up = time.time()
         url, object_key = _upload_video(
             job_id,
             final_video,
         )
+        if stage is not None:
+            stage["upload_s"] = round(time.time() - t_up, 2)
+            stage["total_s"] = round(time.time() - started_wall, 2)
 
         _log("Final video upload completed")
 
@@ -942,6 +1066,10 @@ def handler(job):
             "input_video_bytes": vb,
             "input_video_probe": input_meta,
             "output_video_probe": final_meta,
+            **({"options": {k: v for k, v in opts.items() if k not in ("prompt", "negative_prompt")}} if opts else {}),
+            **({"total_frames": total_frames,
+                "windows": workflow.get("899") and len([k for k in workflow if workflow[k].get("class_type") == "WanAnimateToVideo"])} if total_frames else {}),
+            **({"stage_seconds": stage, "node_timings": node_timings} if stage is not None else {}),
         }
 
     except Exception as e:
