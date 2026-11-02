@@ -24,18 +24,6 @@ RUN git clone https://github.com/kijai/ComfyUI-WanAnimatePreprocess.git \
     && cd /comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess \
     && git checkout e63d6e71ae4c271f3f81211a7ca7f87607b7e50d
 
-# perf-lab: ONNX cuDNN conv algo search defaults to HEURISTIC (fast first run); set WAN22_ORT_CONV_SEARCH=EXHAUSTIVE to restore
-RUN /opt/venv/bin/python - <<'PYEOF'
-from pathlib import Path
-p = Path("/comfyui/custom_nodes/ComfyUI-WanAnimatePreprocess/models/onnx_models.py")
-s = p.read_text()
-old = "provider = [device, 'CPUExecutionProvider'] if device == 'CUDAExecutionProvider' else [device]"
-new = "provider = [(device, {'cudnn_conv_algo_search': __import__('os').environ.get('WAN22_ORT_CONV_SEARCH', 'HEURISTIC')}), 'CPUExecutionProvider'] if device == 'CUDAExecutionProvider' else [device]"
-assert s.count(old) == 1, 'onnx provider line not found'
-p.write_text(s.replace(old, new))
-print('patched onnx provider options')
-PYEOF
-
 # ============================================================
 # ONNX Detection Compatibility Fix
 #
