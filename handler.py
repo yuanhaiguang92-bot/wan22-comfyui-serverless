@@ -352,6 +352,18 @@ def _video_frames(path, force_rate=None):
     return max(1, int(st.get("nb_read_packets") or 0))
 
 
+def _facing_choices(ph):
+    out = []
+    try:
+        for nid, o in sorted(((ph or {}).get("outputs") or {}).items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0):
+            for t in (o or {}).get("text") or []:
+                if "facing away" in str(t):
+                    out.append(str(t))
+    except Exception:
+        pass
+    return out
+
+
 def _src_size(meta):
     try:
         st = (meta.get("streams") or [{}])[0]
@@ -435,10 +447,35 @@ def _apply_opts(wf, opts, total_frames=None, src_size=None):
     if opts.get("skip_debug_outputs"):
         for k in DEBUG_NODES:
             wf.pop(k, None)
+    if opts.get("_back_image"):               # 背面图：每段按人物朝向自动选正面/背面参考图
+        wf["810"] = {"class_type": "LoadImage", "inputs": {"image": opts["_back_image"]}}
+        wf["811"] = copy.deepcopy(wf["371"]); wf["811"]["inputs"]["image"] = ["810", 0]
+        wf["812"] = copy.deepcopy(wf["351"]); wf["812"]["inputs"]["image"] = ["811", 0]
     W = opts.get("window_frames")
     if W and total_frames and total_frames > W:
         _chain_windows(wf, W, total_frames)
+    if opts.get("_back_image"):
+        _wire_facing_select(wf)
     return wf
+
+
+def _wire_facing_select(wf):
+    """给每一段的生成节点接上“按朝向选参考图”节点（段的起止帧和续接方式一致）。"""
+    gens = sorted([k for k, n in wf.items() if n.get("class_type") == "WanAnimateToVideo"], key=lambda k: int(k))
+    gens = ["381"] + [k for k in gens if k != "381"]
+    first_len = wf["381"]["inputs"]["length"]
+    W = first_len if isinstance(first_len, int) else None
+    CONT = int(wf["381"]["inputs"].get("continue_motion_max_frames", 5))
+    overlap = max(0, (((CONT - 1) // 4) + 1) * 4 - 3)
+    for i, g in enumerate(gens):
+        sel = str(820 + i)
+        start = 0 if i == 0 else i * (W - overlap)
+        wf[sel] = {"class_type": "WanPerfFacingSelect", "inputs": {
+            "pose_data": ["360", 0], "front_image": ["371", 0], "back_image": ["811", 0],
+            "front_clip": ["351", 0], "back_clip": ["812", 0],
+            "start": start, "length": W if W else 100000, "threshold": 0.5}}
+        wf[g]["inputs"]["reference_image"] = [sel, 0]
+        wf[g]["inputs"]["clip_vision_output"] = [sel, 1]
 
 
 def _chain_windows(wf, W, N):
@@ -1007,6 +1044,12 @@ def handler(job):
         input_meta = _validate_video(video_path)
 
         opts = _clean_opts(inp)                   # v2 可选参数；没有就是原版行为
+        back_path = None
+        if inp.get("back_image_url"):
+            back_path = COMFY_INPUT / f"wan22_{token}_back.png"
+            _download(inp["back_image_url"], back_path, MAX_IMAGE_BYTES)
+            _validate_image(back_path)
+            opts["_back_image"] = back_path.name
         stage = {"download_s": round(time.time() - started_wall, 2)} if opts.get("timing") else None
         total_frames = _video_frames(video_path, opts.get("force_rate")) if opts.get("window_frames") else None
 
@@ -1107,6 +1150,7 @@ def handler(job):
             **({"total_frames": total_frames,
                 "windows": workflow.get("899") and len([k for k in workflow if workflow[k].get("class_type") == "WanAnimateToVideo"])} if total_frames else {}),
             **({"stage_seconds": stage, "node_timings": node_timings} if stage is not None else {}),
+            **({"reference_choices": _facing_choices(ph)} if opts.get("_back_image") else {}),
         }
 
     except Exception as e:
@@ -1118,7 +1162,7 @@ def handler(job):
         }
 
     finally:
-        for p in (image_path, video_path):
+        for p in (image_path, video_path, COMFY_INPUT / f"wan22_{token}_back.png"):
             try:
                 p.unlink(missing_ok=True)
             except Exception:

@@ -79,6 +79,23 @@ class T(unittest.TestCase):
         self.assertEqual((wf["301"]["inputs"]["custom_width"], wf["301"]["inputs"]["custom_height"]), (0, 0))   # 原视频更小：不缩放
         wf = H._prepare_workflow("i.png", "v.mp4", "tok", 1, opts=H._clean_opts({"steps": 4}), src_size=(1080, 1920))
         self.assertEqual(wf["301"]["inputs"]["custom_width"], 0)                                                 # 没指定尺寸：不动
+    def test_back_image_wiring(self):
+        o = H._clean_opts({"window_frames": 37, "skip_debug_outputs": True}); o["_back_image"] = "wan22_tok_back.png"
+        wf = H._prepare_workflow("i.png", "v.mp4", "tok", 1, opts=o, total_frames=100)
+        sels = sorted([k for k, n in wf.items() if n["class_type"] == "WanPerfFacingSelect"], key=int)
+        gens = [k for k, n in wf.items() if n["class_type"] == "WanAnimateToVideo"]
+        self.assertEqual(len(sels), len(gens)); self.assertEqual(len(gens), 3)      # 1 + ceil((100-37)/32) = 3
+        self.assertEqual([wf[k]["inputs"]["start"] for k in sels], [0, 32, 64])
+        for g in gens:
+            self.assertIn(wf[g]["inputs"]["reference_image"][0], sels); self.assertEqual(wf[g]["inputs"]["clip_vision_output"][1], 1)
+        self.assertEqual(wf["810"]["inputs"]["image"], "wan22_tok_back.png"); self.assertEqual(links_ok(wf), [])
+    def test_back_image_short_video(self):
+        o = H._clean_opts({}); o["_back_image"] = "b.png"
+        wf = H._prepare_workflow("i.png", "v.mp4", "tok", 1, opts=o, total_frames=None)
+        self.assertEqual(wf["381"]["inputs"]["reference_image"], ["820", 0]); self.assertEqual(wf["820"]["inputs"]["start"], 0); self.assertEqual(links_ok(wf), [])
+    def test_no_back_image_unchanged(self):
+        wf = H._prepare_workflow("i.png", "v.mp4", "tok", 1, opts=H._clean_opts({"window_frames": 37}), total_frames=100)
+        self.assertFalse(any(n["class_type"] == "WanPerfFacingSelect" for n in wf.values())); self.assertEqual(wf["381"]["inputs"]["reference_image"], ["371", 0])
     def test_invalid(self):
         for bad in ({"width": 500}, {"mode": "x"}, {"window_frames": 80}, {"steps": 99}, {"force_rate": 2}, {"sage_attention": "evil"}, {"mask_expand": 999}):
             with self.assertRaises(ValueError): H._clean_opts(bad)
