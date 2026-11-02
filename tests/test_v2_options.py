@@ -57,8 +57,19 @@ class T(unittest.TestCase):
     def test_window_not_needed_for_short(self):
         wf = H._prepare_workflow("i.png", "v.mp4", "tok", 1, opts=H._clean_opts({"window_frames": 77}), total_frames=60)
         self.assertNotIn("899", wf); self.assertEqual(wf["381"]["inputs"]["length"], ["301", 1])
+    def test_sage_and_mask(self):
+        o = H._clean_opts({"sage_attention": True, "mask_expand": 24, "window_frames": 77, "skip_debug_outputs": True})
+        self.assertEqual(o["sage_attention"], "auto")
+        wf = H._prepare_workflow("i.png", "v.mp4", "tok", 1, opts=o, total_frames=200)
+        self.assertEqual(wf["880"]["class_type"], "PathchSageAttentionKJ"); self.assertEqual(wf["880"]["inputs"]["model"], ["377", 0])
+        ks = [k for k, n in wf.items() if n["class_type"] == "KSampler"]
+        self.assertTrue(len(ks) >= 2 and all(wf[k]["inputs"]["model"] == ["880", 0] for k in ks))   # 续接的每一段都用加速
+        self.assertEqual(wf["370"]["inputs"]["expand"], 24); self.assertEqual(links_ok(wf), [])
+        self.assertNotIn("sage_attention", H._clean_opts({"sage_attention": False}))
+        o2 = H._clean_opts({"sage_attention": True, "relight": False})
+        wf2 = H._prepare_workflow("i.png", "v.mp4", "tok", 1, opts=o2); self.assertEqual(wf2["880"]["inputs"]["model"], ["377", 0]); self.assertEqual(links_ok(wf2), [])
     def test_invalid(self):
-        for bad in ({"width": 500}, {"mode": "x"}, {"window_frames": 80}, {"steps": 99}, {"force_rate": 2}):
+        for bad in ({"width": 500}, {"mode": "x"}, {"window_frames": 80}, {"steps": 99}, {"force_rate": 2}, {"sage_attention": "evil"}, {"mask_expand": 999}):
             with self.assertRaises(ValueError): H._clean_opts(bad)
 if __name__ == "__main__":
     unittest.main()

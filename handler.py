@@ -333,7 +333,9 @@ def _load_workflow():
 
 # ===== v2 可选参数（opt-in）：不传这些参数时，工作流与原版逐字节一致 =====
 OPT_KEYS = ("width", "height", "mode", "prompt", "negative_prompt", "relight", "steps",
-            "force_rate", "window_frames", "skip_debug_outputs", "keep_audio", "timing")
+            "force_rate", "window_frames", "skip_debug_outputs", "keep_audio", "timing",
+            "sage_attention", "mask_expand")
+SAGE_MODES = ("auto", "sageattn_qk_int8_pv_fp16_triton", "sageattn_qk_int8_pv_fp16_cuda", "sageattn_qk_int8_pv_fp8_cuda")
 DEBUG_NODES = ("352", "353", "354", "358", "359", "362")   # 姿态/遮罩/检测的调试视频，最终结果用不到
 
 
@@ -359,7 +361,17 @@ def _clean_opts(inp):
                 raise ValueError(f"{k} must be {lo}..{hi}" + (f" and a multiple of {mult}" if mult > 1 else ""))
             o[k] = v
     _int("width", 256, 1536, 16); _int("height", 256, 1536, 16); _int("steps", 1, 30)
-    _int("force_rate", 8, 60)
+    _int("force_rate", 8, 60); _int("mask_expand", 0, 64)
+    if "sage_attention" in o:
+        v = o["sage_attention"]
+        if v is True:
+            v = "auto"
+        if v is False or v == "disabled":
+            o.pop("sage_attention")
+        elif v not in SAGE_MODES:
+            raise ValueError("sage_attention must be true/false or one of " + ",".join(SAGE_MODES))
+        else:
+            o["sage_attention"] = v
     if "window_frames" in o:
         v = int(o["window_frames"])
         if not (13 <= v <= 121) or (v - 1) % 4:
@@ -390,6 +402,11 @@ def _apply_opts(wf, opts, total_frames=None):
         wf.pop("350", None)
     if "steps" in opts:
         wf["382"]["inputs"]["steps"] = opts["steps"]
+    if "sage_attention" in opts:              # 注意力加速：只对本次生成打补丁，结束后自动恢复
+        wf["880"] = {"class_type": "PathchSageAttentionKJ", "inputs": {"model": wf["382"]["inputs"]["model"], "sage_attention": opts["sage_attention"]}}
+        wf["382"]["inputs"]["model"] = ["880", 0]
+    if "mask_expand" in opts:                 # 遮罩向外扩展的像素（原版 10），越大越能盖住原来的人物
+        wf["370"]["inputs"]["expand"] = opts["mask_expand"]
     if opts.get("mode") == "animate":         # 动作迁移：不保留参考视频背景，人物用图片里的场景
         wf["381"]["inputs"].pop("background_video", None)
         wf["381"]["inputs"].pop("character_mask", None)
