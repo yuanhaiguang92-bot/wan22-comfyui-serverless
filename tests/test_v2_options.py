@@ -68,6 +68,17 @@ class T(unittest.TestCase):
         self.assertNotIn("sage_attention", H._clean_opts({"sage_attention": False}))
         o2 = H._clean_opts({"sage_attention": True, "relight": False})
         wf2 = H._prepare_workflow("i.png", "v.mp4", "tok", 1, opts=o2); self.assertEqual(wf2["880"]["inputs"]["model"], ["377", 0]); self.assertEqual(links_ok(wf2), [])
+    def test_load_resize(self):
+        o = H._clean_opts({"width": 400, "height": 720})
+        wf = H._prepare_workflow("i.png", "v.mp4", "tok", 1, opts=o, src_size=(1080, 1920))
+        self.assertEqual((wf["301"]["inputs"]["custom_width"], wf["301"]["inputs"]["custom_height"]), (408, 720))
+        wf = H._prepare_workflow("i.png", "v.mp4", "tok", 1, opts=H._clean_opts({"width": 720, "height": 960}), src_size=(1080, 1920))
+        cw, ch = wf["301"]["inputs"]["custom_width"], wf["301"]["inputs"]["custom_height"]
+        self.assertTrue(cw >= 720 and ch >= 960 and abs(cw / ch - 1080 / 1920) < 0.02, (cw, ch))
+        wf = H._prepare_workflow("i.png", "v.mp4", "tok", 1, opts=H._clean_opts({"width": 400, "height": 720}), src_size=(360, 640))
+        self.assertEqual((wf["301"]["inputs"]["custom_width"], wf["301"]["inputs"]["custom_height"]), (0, 0))   # 原视频更小：不缩放
+        wf = H._prepare_workflow("i.png", "v.mp4", "tok", 1, opts=H._clean_opts({"steps": 4}), src_size=(1080, 1920))
+        self.assertEqual(wf["301"]["inputs"]["custom_width"], 0)                                                 # 没指定尺寸：不动
     def test_invalid(self):
         for bad in ({"width": 500}, {"mode": "x"}, {"window_frames": 80}, {"steps": 99}, {"force_rate": 2}, {"sage_attention": "evil"}, {"mask_expand": 999}):
             with self.assertRaises(ValueError): H._clean_opts(bad)

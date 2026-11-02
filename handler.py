@@ -352,6 +352,14 @@ def _video_frames(path, force_rate=None):
     return max(1, int(st.get("nb_read_packets") or 0))
 
 
+def _src_size(meta):
+    try:
+        st = (meta.get("streams") or [{}])[0]
+        return int(st.get("width") or 0), int(st.get("height") or 0)
+    except Exception:
+        return None
+
+
 def _clean_opts(inp):
     o = {k: inp[k] for k in OPT_KEYS if k in inp and inp[k] is not None}
     def _int(k, lo, hi, mult=1):
@@ -388,11 +396,22 @@ def _clean_opts(inp):
     return o
 
 
-def _apply_opts(wf, opts, total_frames=None):
+def _load_size(src_w, src_h, out_w, out_h):
+    """读取参考视频时直接缩放到刚好覆盖输出尺寸（保持比例），避免把高清长视频按原尺寸读进内存。"""
+    s = max(out_w / src_w, out_h / src_h)
+    if s >= 1:
+        return 0, 0                      # 原视频不比输出大：按原尺寸读
+    return max(16, int(round(src_w * s / 8)) * 8), max(16, int(round(src_h * s / 8)) * 8)
+
+
+def _apply_opts(wf, opts, total_frames=None, src_size=None):
     if "width" in opts:
         wf["159"]["inputs"]["value"] = opts["width"]
     if "height" in opts:
         wf["160"]["inputs"]["value"] = opts["height"]
+    if ("width" in opts or "height" in opts) and src_size and all(src_size):
+        cw, ch = _load_size(src_size[0], src_size[1], wf["159"]["inputs"]["value"], wf["160"]["inputs"]["value"])
+        wf["301"]["inputs"]["custom_width"], wf["301"]["inputs"]["custom_height"] = cw, ch
     if "prompt" in opts:
         wf["376"]["inputs"]["text"] = opts["prompt"]
     if "negative_prompt" in opts:
@@ -448,7 +467,7 @@ def _chain_windows(wf, W, N):
     return n
 
 
-def _prepare_workflow(image_name, video_name, token, seed=None, opts=None, total_frames=None):
+def _prepare_workflow(image_name, video_name, token, seed=None, opts=None, total_frames=None, src_size=None):
     wf = copy.deepcopy(_load_workflow())
 
     wf["10"]["inputs"]["image"] = image_name
@@ -482,7 +501,7 @@ def _prepare_workflow(image_name, video_name, token, seed=None, opts=None, total
         wf["379"]["inputs"]["value"] = seed
 
     if opts:
-        _apply_opts(wf, opts, total_frames)
+        _apply_opts(wf, opts, total_frames, src_size)
     return wf
 
 
@@ -998,6 +1017,7 @@ def handler(job):
             seed,
             opts=opts or None,
             total_frames=total_frames,
+            src_size=_src_size(input_meta) if opts else None,
         )
 
         client_id = str(uuid.uuid4())
