@@ -48,19 +48,16 @@ class WanPerfFacingSelect:
 
     @staticmethod
     def facing_away(meta):
+        """背对镜头 = 两个肩膀都检测清楚，且人的右肩出现在左肩的右边（画面坐标）。
+        实测：这个姿态模型对着后脑勺也会给出高置信度的五官，所以不能用“看不到脸”来判断；肩膀左右互换最准。"""
         b = meta.get("keypoints_body") if isinstance(meta, dict) else None
         if b is None:
             return False
         b = [None if p is None else [float(x) for x in list(p)] for p in list(b)]   # 兼容 numpy 数组和列表
-        if len(b) < 16:
+        if len(b) < 6 or b[2] is None or b[5] is None or len(b[2]) < 3 or len(b[5]) < 3:
             return False
-        def sc(i):
-            p = b[i]
-            return p[2] if p is not None and len(p) > 2 else 0.0
-        face = max(sc(0), sc(14), sc(15))                 # 鼻子、右眼、左眼的置信度
-        r, l = b[2], b[5]                                  # 右肩、左肩（画面坐标 0~1）
-        swapped = r is not None and l is not None and sc(2) > 0.3 and sc(5) > 0.3 and r[0] > l[0] + 0.01
-        return face < 0.35 and swapped
+        r, l = b[2], b[5]                                  # 右肩、左肩（x 为画面横坐标 0~1）
+        return r[2] > 0.5 and l[2] > 0.5 and (r[0] - l[0]) > 0.05
 
     def pick(self, pose_data, front_image, back_image, front_clip, back_clip, start, length, threshold):
         metas = (pose_data or {}).get("pose_metas_original") if isinstance(pose_data, dict) else None
@@ -70,17 +67,6 @@ class WanPerfFacingSelect:
         ratio = away / len(seg) if seg else 0.0
         use_back = ratio > threshold
         info = f"frames {start}-{start + len(seg) - 1}: facing away {away}/{len(seg)} -> {'back' if use_back else 'front'}"
-        if start == 0:                            # 诊断：每帧的脸部置信度和肩膀位置（只在第一段输出整段视频的数据）
-            rows = []
-            for i, m in enumerate(metas):
-                try:
-                    b = [None if q is None else [float(x) for x in list(q)] for q in list(m.get("keypoints_body"))]
-                    fc = m.get("keypoints_face"); fs = [float(list(q)[2]) for q in list(fc)] if fc is not None else []
-                    rows.append([i, round(b[0][2], 2), round(b[14][2], 2), round(b[15][2], 2), round(b[16][2], 2), round(b[17][2], 2),
-                                 round(sum(fs) / len(fs), 2) if fs else -1, round(b[2][0] - b[5][0], 3), round(b[2][2], 2), round(b[5][2], 2)])
-                except Exception as e:
-                    rows.append([i, "err", str(e)[:40]])
-            info += " || DIAG " + __import__("json").dumps(rows)
         print("[WanPerfFacingSelect] " + info, flush=True)
         if use_back:
             return {"ui": {"text": [info]}, "result": (back_image, back_clip)}
