@@ -70,6 +70,17 @@ class WanPerfFacingSelect:
         ratio = away / len(seg) if seg else 0.0
         use_back = ratio > threshold
         info = f"frames {start}-{start + len(seg) - 1}: facing away {away}/{len(seg)} -> {'back' if use_back else 'front'}"
+        if start == 0:                            # 诊断：每帧的脸部置信度和肩膀位置（只在第一段输出整段视频的数据）
+            rows = []
+            for i, m in enumerate(metas):
+                try:
+                    b = [None if q is None else [float(x) for x in list(q)] for q in list(m.get("keypoints_body"))]
+                    fc = m.get("keypoints_face"); fs = [float(list(q)[2]) for q in list(fc)] if fc is not None else []
+                    rows.append([i, round(b[0][2], 2), round(b[14][2], 2), round(b[15][2], 2), round(b[16][2], 2), round(b[17][2], 2),
+                                 round(sum(fs) / len(fs), 2) if fs else -1, round(b[2][0] - b[5][0], 3), round(b[2][2], 2), round(b[5][2], 2)])
+                except Exception as e:
+                    rows.append([i, "err", str(e)[:40]])
+            info += " || DIAG " + __import__("json").dumps(rows)
         print("[WanPerfFacingSelect] " + info, flush=True)
         if use_back:
             return {"ui": {"text": [info]}, "result": (back_image, back_clip)}
