@@ -11,4 +11,10 @@ if [ -n "$SNAP" ]; then
 else
   echo "[vz-flux3] WARNING: model cache not found at $REPO_DIR"
 fi
+# 镜像自带的模型（SAM 3.1 等）：链接进 ComfyUI 的模型目录
+for d in /opt/vz-models/*/; do
+  sub=$(basename "$d"); mkdir -p "/comfyui/models/$sub"
+  for f in "$d"*; do [ -e "$f" ] && ln -sf "$f" "/comfyui/models/$sub/$(basename "$f")"; done
+done
+echo "[vz-flux3] bundled models:"; ls -la /comfyui/models/checkpoints 2>/dev/null
 exec /start.sh
