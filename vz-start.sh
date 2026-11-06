@@ -25,7 +25,22 @@ for it in "${ITEMS[@]}"; do
   mkdir -p "/comfyui/models/$sub"
   if [ ! -s "/comfyui/models/$sub/$name" ]; then
     echo "[vz-h3lab] downloading $repo/$path"
-    curl -sSL --retry 5 -H "Authorization: Bearer ${HF_TOKEN:-}" -o "/comfyui/models/$sub/$name.part" "https://huggingface.co/$repo/resolve/main/$path" && mv "/comfyui/models/$sub/$name.part" "/comfyui/models/$sub/$name"
+    python3 - "$repo" "$path" "/comfyui/models/$sub/$name" <<'PYEOF' || echo "[vz-h3lab] ERROR: download failed $repo/$path"
+import os, sys, urllib.request, shutil
+repo, path, dest = sys.argv[1:4]
+req = urllib.request.Request(f"https://huggingface.co/{repo}/resolve/main/{path}")
+tok = os.environ.get("HF_TOKEN", "")
+if tok: req.add_header("Authorization", "Bearer " + tok)
+for attempt in range(5):
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r, open(dest + ".part", "wb") as f:
+            shutil.copyfileobj(r, f, 16 * 1024 * 1024)
+        os.replace(dest + ".part", dest); print("[vz-h3lab] downloaded", dest, os.path.getsize(dest)); break
+    except Exception as e:
+        print("[vz-h3lab] retry", attempt + 1, "for", path, ":", e)
+else:
+    sys.exit(1)
+PYEOF
   fi
 done
 echo "[vz-h3lab] models ready:"; ls -la /comfyui/models/loras /comfyui/models/text_encoders /comfyui/models/vae 2>/dev/null
