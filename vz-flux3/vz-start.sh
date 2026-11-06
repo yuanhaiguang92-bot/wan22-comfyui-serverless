@@ -17,4 +17,16 @@ for d in /opt/vz-models/*/; do
   for f in "$d"*; do [ -e "$f" ] && ln -sf "$f" "/comfyui/models/$sub/$(basename "$f")"; done
 done
 echo "[vz-flux3] bundled models:"; ls -la /comfyui/models/checkpoints 2>/dev/null
+# ---- vz-h3lab（临时测试用）：额外下载 P-H3 的 LoRA / 4B 文字编码器 / VAE（公开仓库），下载完再启动 ----
+VZ_DL="${VZ_DL:-PrunaAI/P-H3-Image-Comfy|loras/p-h3-image_lora_bf16.safetensors;PrunaAI/P-H3-Image-Comfy|text_encoders/p-h3-image_text_encoder_bf16.safetensors;PrunaAI/P-H3-Image-Comfy|vae/p-h3-image_vae_bf16.safetensors}"
+IFS=';' read -ra ITEMS <<< "$VZ_DL"
+for it in "${ITEMS[@]}"; do
+  repo="${it%%|*}"; path="${it#*|}"; sub="${path%%/*}"; name="$(basename "$path")"
+  mkdir -p "/comfyui/models/$sub"
+  if [ ! -s "/comfyui/models/$sub/$name" ]; then
+    echo "[vz-h3lab] downloading $repo/$path"
+    curl -sSL --retry 5 -H "Authorization: Bearer ${HF_TOKEN:-}" -o "/comfyui/models/$sub/$name.part" "https://huggingface.co/$repo/resolve/main/$path" && mv "/comfyui/models/$sub/$name.part" "/comfyui/models/$sub/$name"
+  fi
+done
+echo "[vz-h3lab] models ready:"; ls -la /comfyui/models/loras /comfyui/models/text_encoders /comfyui/models/vae 2>/dev/null
 exec /start.sh
