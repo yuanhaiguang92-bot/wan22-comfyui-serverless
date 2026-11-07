@@ -12,6 +12,11 @@ RUN set -eux; cd /tmp && git clone -q https://github.com/Comfy-Org/ComfyUI.git c
 # 放在 /opt（/comfyui/models 在基础镜像里可能是数据卷，构建时写进去的文件运行时会丢），启动时由 vz-start.sh 链接过去
 ADD https://huggingface.co/Comfy-Org/sam3.1/resolve/main/checkpoints/sam3.1_multiplex_fp16.safetensors /opt/vz-models/checkpoints/sam3.1_multiplex_fp16.safetensors
 RUN ls -la /opt/vz-models/checkpoints/ && test -s /opt/vz-models/checkpoints/sam3.1_multiplex_fp16.safetensors && test -f /comfyui/comfy_extras/nodes_sam3.py
+# vz-h3lab（临时测试）：RefMod（参考图强度调节）+ Dials（方向旋钮），都不用训练；固定版本
+RUN set -eux; cd /comfyui/custom_nodes \
+ && git clone -q https://github.com/Luisacaotica/ComfyUI-MiniMaxH3Mod && git -C ComfyUI-MiniMaxH3Mod checkout -q 517e8c4 \
+ && git clone -q https://github.com/matlowai/ComfyUI-Dials && git -C ComfyUI-Dials checkout -q 9b55d62 \
+ && ls /comfyui/custom_nodes
 COPY vz-start.sh /vz-start.sh
 RUN chmod +x /vz-start.sh
 CMD ["/vz-start.sh"]
