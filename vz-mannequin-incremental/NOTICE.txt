@@ -1,0 +1,18 @@
+VAZIRO additive mannequin candidate, vz-mannequin-2048-v1.
+
+Single-reference conditioning policy adapted from:
+https://github.com/Comfy-Org/ComfyUI/blob/v0.45.3/comfy_extras/nodes_minimax_h3.py
+https://github.com/Comfy-Org/ComfyUI/blob/v0.45.3/comfy/text_encoders/minimax.py
+ComfyUI source is licensed under GPL-3.0. The derived adapter is distributed
+under GPL-3.0; retain upstream attribution and license when redistributing.
+
+Encoder source (pinned revision and full-file SHA256 in Dockerfile):
+https://huggingface.co/Comfy-Org/MiniMax-H3
+Encoder files retain their upstream MiniMax H3 community license.
+
+This candidate does not replace ComfyUI core, old nodes, dependencies, worker
+handler, startup script, or old weights. It requires real GPU acceptance tests
+before production activation. RunPod's original Pruna model cache configuration
+must also be retained on the test endpoint.
+
+Build context is this directory. No API keys or user product images are included.
