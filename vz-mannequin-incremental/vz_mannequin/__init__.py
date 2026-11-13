@@ -5,7 +5,11 @@ the single-image, explicit-2048 workflow approved in PF1--PF5.
 """
 import copy
 import hashlib
+import json
 import logging
+from pathlib import Path
+import struct
+import zlib
 
 import comfy.utils
 import node_helpers
@@ -13,6 +17,21 @@ import nodes
 
 VERSION = "vz-mannequin-2048-v1"
 ENCODER = "qwen3vl_32b_minimax_h3_int8_convrot.safetensors"
+
+
+def append_png_audit(path, audit):
+    """Add one PNG text chunk without decoding or changing any pixel-data bytes.
+
+    The inherited worker runs with --disable-metadata. Keep that global policy;
+    only this new output node explicitly saves its own expansion audit.
+    """
+    raw = path.read_bytes()
+    if not raw.startswith(b'\x89PNG\r\n\x1a\n') or raw[-12:] != b'\x00\x00\x00\x00IEND\xaeB`\x82':
+        raise ValueError('Expected a complete PNG from SaveImage')
+    payload = b'vz_mannequin\x00' + json.dumps(audit, ensure_ascii=True).encode('ascii')
+    chunk = b'tEXt' + payload
+    encoded = struct.pack('>I', len(payload)) + chunk + struct.pack('>I', zlib.crc32(chunk) & 0xffffffff)
+    path.write_bytes(raw[:-12] + encoded + raw[-12:])
 
 
 def short_edge_size(width, height, low, high):
@@ -91,7 +110,14 @@ class VZMannequinSaveImageV1(nodes.SaveImage):
             "encoder": ENCODER,
         }
         logging.info("[VZ mannequin] %s expansion_sha256=%s", VERSION, extra["vz_mannequin"]["expansion_sha256"])
-        return super().save_images(images, filename_prefix, prompt, extra)
+        result = super().save_images(images, filename_prefix, prompt, extra)
+        for item in result.get('ui', {}).get('images', []):
+            output_root = Path(self.output_dir).resolve()
+            path = (output_root / item.get('subfolder', '') / item['filename']).resolve()
+            if not path.is_relative_to(output_root):
+                raise ValueError('Audit output must be inside the ComfyUI output directory')
+            append_png_audit(path, extra['vz_mannequin'])
+        return result
 
 
 NODE_CLASS_MAPPINGS = {
